@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Even-odd compound path punches out inner hit-circle ring + 3 beat dots cleanly for Android 13+ monochrome packs -->
+    <path
+        android:fillColor="#000000"
+        android:fillType="evenOdd"
+        android:pathData="M54,26A28,28 0,1 0,54 82A28,28 0,1 0,54 26ZM54,30.5A23.5,23.5 0,1 0,54 77.5A23.5,23.5 0,1 0,54 30.5ZM48,41.5H60C65.2,41.5 69.5,45.8 69.5,51V53C69.5,58.2 65.2,62.5 60,62.5H49.5L41.5,67.8L43.6,61.3C40.5,59.7 38.5,56.6 38.5,53V51C38.5,45.8 42.8,41.5 48,41.5ZM47,49.8A2.2,2.2 0,1 0,47 54.2A2.2,2.2 0,1 0,47 49.8ZM54,49.8A2.2,2.2 0,1 0,54 54.2A2.2,2.2 0,1 0,54 49.8ZM61,49.8A2.2,2.2 0,1 0,61 54.2A2.2,2.2 0,1 0,61 49.8Z" />
+</vector>

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Nothing OS Adaptive Dark (Matte Black #0B0B0C + #2A2A2E hairline + #D71921 dot) -->
+    <color name="widget_nothing_surface">#0B0B0C</color>
+    <color name="widget_nothing_border">#2A2A2E</color>
+    <color name="widget_nothing_tile">#141417</color>
+    <color name="widget_nothing_tile_border">#242429</color>
+    <color name="widget_nothing_text_primary">#FFFFFFFF</color>
+    <color name="widget_nothing_text_secondary">#8E8E98</color>
+    <color name="widget_nothing_accent">#D71921</color>
+    <color name="widget_nothing_badge_bg">#1FD71921</color>
+    <color name="widget_nothing_badge_border">#55D71921</color>
+    <color name="widget_nothing_icon">#FFFFFFFF</color>
+
+    <!-- Material You Tonal Fallback (API 26-30 Dark) -->
+    <color name="widget_my_surface">#121216</color>
+    <color name="widget_my_border">#2A2A34</color>
+    <color name="widget_my_tile">#18181E</color>
+    <color name="widget_my_tile_border">#262630</color>
+    <color name="widget_my_text_primary">#EDEDF2</color>
+    <color name="widget_my_text_secondary">#9898A6</color>
+    <color name="widget_my_accent">#FF66AA</color>
+    <color name="widget_my_badge_bg">#1FFF66AA</color>
+    <color name="widget_my_badge_border">#44FF66AA</color>
+    <color name="widget_my_icon">#A9A9B8</color>
+</resources>

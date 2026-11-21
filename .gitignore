@@ -1,0 +1,34 @@
+# Local properties & credentials
+local.properties
+keystore.properties
+google-services.json
+
+# Keystores & build artifacts
+*.jks
+*.keystore
+*.p12
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# Gradle & IDE
+build/
+app/build/
+*/build/
+.gradle/
+.kotlin/
+.idea/
+.cxx/
+captures/
+*.iml
+
+# Temporary / agent / local logs
+bug_audit_report.md
+bug_fix_log.md
+.agent/
+.agents/
+
+# OS noise
+.DS_Store
+Thumbs.db

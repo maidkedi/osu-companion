@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android 12+ Material You Dynamic Color (Dark) -->
+    <color name="widget_my_surface">@android:color/system_neutral1_900</color>
+    <color name="widget_my_border">@android:color/system_neutral2_700</color>
+    <color name="widget_my_tile">@android:color/system_neutral2_800</color>
+    <color name="widget_my_tile_border">@android:color/system_neutral2_700</color>
+    <color name="widget_my_text_primary">@android:color/system_neutral1_50</color>
+    <color name="widget_my_text_secondary">@android:color/system_neutral2_200</color>
+    <color name="widget_my_accent">@android:color/system_accent1_200</color>
+    <color name="widget_my_badge_bg">@android:color/system_accent1_800</color>
+    <color name="widget_my_badge_border">@android:color/system_accent1_500</color>
+    <color name="widget_my_icon">@android:color/system_neutral1_100</color>
+</resources>

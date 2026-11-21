@@ -1,0 +1,28 @@
+# Gradle & Android build outputs
+.gradle/
+build/
+app/build/
+*/build/
+captures/
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# IDE & local environment
+.idea/
+*.iml
+.cxx/
+local.properties
+
+# Keystores & signing artifacts
+*.jks
+*.keystore
+
+# Prebuilt Wasm/JS binary assets (keep bridge.html indexed)
+app/src/main/assets/rosu_pp/rosu_pp_js_bg.wasm
+app/src/main/assets/rosu_pp/rosu_pp_js.js
+
+# OS noise
+.DS_Store
+Thumbs.db

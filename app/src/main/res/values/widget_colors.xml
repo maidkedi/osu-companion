@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Nothing OS Adaptive Light (#F5F5F7 + #D71921 accent) -->
+    <color name="widget_nothing_surface">#F5F5F7</color>
+    <color name="widget_nothing_border">#D8D8DF</color>
+    <color name="widget_nothing_tile">#FFFFFF</color>
+    <color name="widget_nothing_tile_border">#E3E3EA</color>
+    <color name="widget_nothing_text_primary">#0B0B0C</color>
+    <color name="widget_nothing_text_secondary">#5F5F68</color>
+    <color name="widget_nothing_accent">#D71921</color>
+    <color name="widget_nothing_badge_bg">#17D71921</color>
+    <color name="widget_nothing_badge_border">#44D71921</color>
+    <color name="widget_nothing_icon">#0B0B0C</color>
+
+    <!-- Material You Tonal Fallback (API 26-30 Light) -->
+    <color name="widget_my_surface">#F6F7F9</color>
+    <color name="widget_my_border">#DDDFE5</color>
+    <color name="widget_my_tile">#EDEEF2</color>
+    <color name="widget_my_tile_border">#DDDFE5</color>
+    <color name="widget_my_text_primary">#1B1B21</color>
+    <color name="widget_my_text_secondary">#5A5A68</color>
+    <color name="widget_my_accent">#E64980</color>
+    <color name="widget_my_badge_bg">#1AE64980</color>
+    <color name="widget_my_badge_border">#44E64980</color>
+    <color name="widget_my_icon">#4A4A58</color>
+
+    <!-- osu! Matte Obsidian (#121216 / #18181E) + Single-Purpose Accent (#FF66AA) -->
+    <color name="widget_osu_surface">#121216</color>
+    <color name="widget_osu_border">#2A2A34</color>
+    <color name="widget_osu_tile">#18181E</color>
+    <color name="widget_osu_tile_border">#262630</color>
+    <color name="widget_osu_text_primary">#EDEDF2</color>
+    <color name="widget_osu_text_secondary">#9898A6</color>
+    <color name="widget_osu_accent">#FF66AA</color>
+    <color name="widget_osu_pp_accent">#EDEDF2</color>
+    <color name="widget_osu_badge_bg">#1F88B300</color>
+    <color name="widget_osu_badge_border">#4488B300</color>
+    <color name="widget_osu_badge_text">#9BC71E</color>
+    <color name="widget_osu_icon">#A9A9B8</color>
+</resources>

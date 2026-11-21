@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>rosu-pp-js bridge</title>
+  <script src="https://rosu-pp.local/rosu_pp_js.js"></script>
+</head>
+<body>
+<script>
+(function () {
+  function safeFree(obj) {
+    try {
+      if (obj && typeof obj.free === 'function' && obj.__wbg_ptr && obj.__wbg_ptr !== 0) {
+        obj.free();
+      }
+    } catch (_) {}
+  }
+
+  function base64ToUint8Array(b64) {
+    const bin = atob(b64);
+    const len = bin.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = bin.charCodeAt(i);
+    }
+    return bytes;
+  }
+
+  function resolveMode(rosu, modeStr) {
+    const norm = String(modeStr || 'osu').trim().toLowerCase();
+    switch (norm) {
+      case '0':
+      case 'osu':
+      case 'std':
+      case 'standard':
+        return rosu.GameMode.Osu;
+      case '1':
+      case 'taiko':
+        return rosu.GameMode.Taiko;
+      case '2':
+      case 'catch':
+      case 'fruits':
+      case 'ctb':
+        return rosu.GameMode.Catch;
+      case '3':
+      case 'mania':
+        return rosu.GameMode.Mania;
+      default:
+        return null;
+    }
+  }
+
+  function resolveMods(modsInput) {
+    if (typeof modsInput === 'number') {
+      if (!Number.isFinite(modsInput) || modsInput < 0) {
+        return '';
+      }
+      return Math.trunc(modsInput);
+    }
+    const raw = String(modsInput || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (!raw || raw === 'NM' || raw === 'NONE' || raw === '0') {
+      return '';
+    }
+    if (/^\d+$/.test(raw)) {
+      return parseInt(raw, 10);
+    }
+    return raw;
+  }
+
+  function postReady(ok, err) {
+    try {
+      if (window.AndroidRosuBridge && typeof window.AndroidRosuBridge.onReady === 'function') {
+        window.AndroidRosuBridge.onReady(Boolean(ok), err ? String(err) : null);
+      }
+    } catch (_) {}
+  }
+
+  function postResult(payload) {
+    try {
+      if (window.AndroidRosuBridge && typeof window.AndroidRosuBridge.onResult === 'function') {
+        window.AndroidRosuBridge.onResult(JSON.stringify(payload));
+      }
+    } catch (_) {}
+  }
+
+  let rosuInstance = null;
+  const readyPromise = (async function init() {
+    if (typeof globalThis.__rosuInit !== 'function') {
+      throw new Error('rosu-pp JS bundle unavailable');
+    }
+    const mod = await globalThis.__rosuInit('https://rosu-pp.local/rosu_pp_js_bg.wasm');
+    rosuInstance = mod;
+    return mod;
+  })();
+
+  readyPromise.then(
+    function () { postReady(true, null); },
+    function (err) { postReady(false, err && err.message ? err.message : String(err)); }
+  );
+
+  window.calculateRosu = async function (requestId, osuBase64, modeStr, modsInput, accuracy, nMisses, combo, clockRate) {
+    const reqIdNum = Number(requestId);
+    if (!Number.isSafeInteger(reqIdNum) || reqIdNum < 0) {
+      postResult({ requestId: -1, ok: false, error: 'Invalid requestId' });
+      return;
+    }
+
+    let map = null;
+    let diff = null;
+    let diffAttrs = null;
+    let perf = null;
+    let perfAttrs = null;
+    let attrBuilder = null;
+    let beatmapAttrs = null;
+
+    try {
+      if (typeof osuBase64 !== 'string' || osuBase64.length === 0 || !/^[A-Za-z0-9+/=]+$/.test(osuBase64)) {
+        throw new Error('Invalid base64 beatmap payload');
+      }
+
+      const rosu = rosuInstance || await readyPromise;
+      const bytes = base64ToUint8Array(osuBase64);
+      map = new rosu.Beatmap(bytes);
+
+      if (typeof map.isSuspicious === 'function' && map.isSuspicious()) {
+        throw new Error('Beatmap flagged as suspicious by rosu-pp');
+      }
+
+      const modsArg = resolveMods(modsInput);
+      const targetMode = resolveMode(rosu, modeStr);
+      if (targetMode !== null && map.mode !== targetMode) {
+        map.convert(targetMode, modsArg);
+      }
+
+      const accNum = Number(accuracy);
+      const clampedAcc = Number.isFinite(accNum) ? Math.min(100, Math.max(0, accNum)) : 100;
+
+      const missesNum = Number(nMisses);
+      const clampedMisses = (nMisses !== null && nMisses !== undefined && Number.isFinite(missesNum) && missesNum > 0)
+        ? Math.max(0, Math.trunc(missesNum))
+        : 0;
+
+      const comboNum = Number(combo);
+      const clampedCombo = (combo !== null && combo !== undefined && Number.isFinite(comboNum) && comboNum > 0)
+        ? Math.max(1, Math.trunc(comboNum))
+        : null;
+
+      const rateNum = Number(clockRate);
+      const clampedRate = (clockRate !== null && clockRate !== undefined && Number.isFinite(rateNum) && rateNum > 0)
+        ? Math.min(2.0, Math.max(0.5, rateNum))
+        : null;
+
+      diff = new rosu.Difficulty({ mods: modsArg, lazer: false });
+      if (clampedRate !== null) {
+        diff.clockRate = clampedRate;
+      }
+      diffAttrs = diff.calculate(map);
+
+      perf = new rosu.Performance({ mods: modsArg, accuracy: clampedAcc, lazer: false });
+      if (clampedRate !== null) {
+        perf.clockRate = clampedRate;
+      }
+      if (clampedMisses > 0) {
+        perf.misses = clampedMisses;
+      }
+      if (clampedCombo !== null) {
+        perf.combo = clampedCombo;
+      }
+      perfAttrs = perf.calculate(diffAttrs);
+
+      attrBuilder = new rosu.BeatmapAttributesBuilder({ map: map, mods: modsArg });
+      if (clampedRate !== null) {
+        attrBuilder.clockRate = clampedRate;
+      }
+      beatmapAttrs = attrBuilder.build();
+
+      if (!Number.isFinite(diffAttrs.stars) || !Number.isFinite(perfAttrs.pp)) {
+        throw new Error('Non-finite calculation output');
+      }
+
+      postResult({
+        requestId: reqIdNum,
+        ok: true,
+        starRating: diffAttrs.stars,
+        pp: perfAttrs.pp,
+        ar: beatmapAttrs.ar,
+        cs: beatmapAttrs.cs,
+        od: beatmapAttrs.od,
+        hp: beatmapAttrs.hp,
+        clockRate: beatmapAttrs.clockRate,
+        maxCombo: diffAttrs.maxCombo
+      });
+    } catch (err) {
+      postResult({
+        requestId: reqIdNum,
+        ok: false,
+        error: err && err.message ? err.message : String(err)
+      });
+    } finally {
+      safeFree(beatmapAttrs);
+      safeFree(attrBuilder);
+      safeFree(perfAttrs);
+      safeFree(perf);
+      safeFree(diffAttrs);
+      safeFree(diff);
+      safeFree(map);
+    }
+  };
+  window.calculateRosuPp = window.calculateRosu;
+})();
+</script>
+</body>
+</html>
