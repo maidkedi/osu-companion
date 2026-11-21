@@ -26,12 +26,7 @@ cp local.properties.example local.properties
 
 Set `sdk.dir` to your local Android SDK path.
 
-To enable built-in osu! OAuth2 login:
-1. Create an OAuth application at [osu! Account Settings](https://osu.ppy.sh/home/account/edit#oauth).
-2. Set **Application Callback URL** to `http://127.0.0.1:42069/callback`.
-3. Fill in `osu.clientId` and `osu.clientSecret` inside `local.properties`.
-
-Contributors can omit `osu.clientId` and `osu.clientSecret` to build with empty defaults and sign in via **Bancho IRC** (`irc.ppy.sh`) or enter a custom Client ID on the Login screen.
+OAuth2 login uses the public `client_id` (`75323`) and routes token exchange/refresh through a Cloudflare Worker proxy, so no OAuth client secret is required to build from source. You can also sign in directly via **Bancho IRC** (`irc.ppy.sh`) or specify a custom Client ID on the Login screen.
 
 ### 3. Build & Test
 

@@ -39,6 +39,7 @@ import com.osuchat.app.data.network.NetworkConnectivityMonitor
 import com.osuchat.app.data.network.OAuthCallbackResult
 import com.osuchat.app.data.network.OAuthConfig
 import com.osuchat.app.data.network.OAuthPkceManager
+import com.osuchat.app.data.network.OAuthTokenExchangeRequest
 import com.osuchat.app.data.network.OAuthTokenResponse
 import com.osuchat.app.data.network.OsuApiException
 import com.osuchat.app.data.network.OsuApiPoller
@@ -953,18 +954,21 @@ class ChatRepositoryImpl @Inject constructor(
             _isSessionExpired.value = false
             okHttpExchangeActive.set(true)
             val clientId = OAuthConfig.CLIENT_ID.trim()
-            val clientSecret = OAuthConfig.CLIENT_SECRET.trim()
+            val codeVerifier = runCatching {
+                prefs.getPendingPkce()?.codeVerifier?.trim()?.takeIf { it.isNotBlank() }
+            }.getOrNull()
 
             _connectionStatus.value = ConnectionStatus.CONNECTING
             _connectionError.value = null
 
             try {
                 val tokenRes = authService.exchangeAuthorizationCode(
-                    clientId = clientId,
-                    clientSecret = clientSecret,
-                    code = cleanCode,
-                    grantType = "authorization_code",
-                    redirectUri = OAuthConfig.REDIRECT_URI
+                    OAuthTokenExchangeRequest(
+                        grantType = "authorization_code",
+                        code = cleanCode,
+                        redirectUri = OAuthConfig.REDIRECT_URI,
+                        codeVerifier = codeVerifier
+                    )
                 )
                 val accessToken = tokenRes.accessToken?.trim().orEmpty()
                 if (accessToken.isBlank()) {
@@ -2567,6 +2571,7 @@ class ChatRepositoryImpl @Inject constructor(
         loadOlder: Boolean,
         force: Boolean
     ): Result<Unit> = withContext(Dispatchers.IO) {
+        if (!OAuthConfig.SUPPORTS_CHAT_READ_HISTORY) return@withContext Result.success(Unit)
         val normId = normalizeChannelId(channelId)
         if (normId.isBlank()) return@withContext Result.success(Unit)
 
@@ -2741,6 +2746,9 @@ class ChatRepositoryImpl @Inject constructor(
     }
 
     private suspend fun ensurePublicChannelsCatalogLoaded(selfUserId: Long): Boolean {
+        if (!OAuthConfig.SUPPORTS_CHAT_READ_HISTORY) {
+            return false
+        }
         if (publicChannelsCatalogLoaded || _requiresChatReadReauth.value) {
             return !_requiresChatReadReauth.value
         }
@@ -2786,6 +2794,7 @@ class ChatRepositoryImpl @Inject constructor(
         normId: String,
         settings: AppSettings
     ): ResolvedApiChannel? {
+        if (!OAuthConfig.SUPPORTS_CHAT_READ_HISTORY) return null
         normId.toLongOrNull()?.let { numeric ->
             apiChannelIdCache[normId] = numeric
             return ResolvedApiChannel(numeric)

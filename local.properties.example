@@ -1,9 +1,6 @@
 # Android SDK location (automatically populated by Android Studio)
 sdk.dir=/path/to/Android/sdk
 
-# Optional: osu! OAuth2 credentials
-# Register an OAuth Application at https://osu.ppy.sh/home/account/edit#oauth
-# Set Application Callback URL to: http://127.0.0.1:42069/callback
-# Users can also enter a custom Client ID directly in the app's Login screen or use Bancho IRC.
-osu.clientId=YOUR_OSU_OAUTH_CLIENT_ID
-osu.clientSecret=YOUR_OSU_OAUTH_CLIENT_SECRET
+# Optional: override the built-in public osu! OAuth2 Client ID (defaults to 75323).
+# Token exchange and refresh are handled via the Cloudflare Worker proxy without any embedded secret.
+# osu.clientId=75323

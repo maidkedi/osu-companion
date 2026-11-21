@@ -2,6 +2,8 @@ package com.osuchat.app
 
 import com.google.gson.GsonBuilder
 import com.osuchat.app.data.network.NerinyanApiService
+import com.osuchat.app.data.network.OAuthConfig
+import com.osuchat.app.data.network.OAuthTokenExchangeRequest
 import com.osuchat.app.data.network.OsuApiException
 import com.osuchat.app.data.network.OsuApiPoller
 import com.osuchat.app.data.network.OsuApiPollerEvent
@@ -39,6 +41,7 @@ import javax.crypto.KeyGenerator
 
 class OsuApiPollerTest {
 
+    private lateinit var authProxyServer: MockWebServer
     private lateinit var osuServer: MockWebServer
     private lateinit var catboyServer: MockWebServer
     private lateinit var nerinyanServer: MockWebServer
@@ -73,9 +76,11 @@ class OsuApiPollerTest {
 
     @Before
     fun setUp() {
+        authProxyServer = MockWebServer()
         osuServer = MockWebServer()
         catboyServer = MockWebServer()
         nerinyanServer = MockWebServer()
+        authProxyServer.start()
         osuServer.start()
         catboyServer.start()
         nerinyanServer.start()
@@ -87,6 +92,11 @@ class OsuApiPollerTest {
             .writeTimeout(5, TimeUnit.SECONDS)
             .build()
 
+        val authProxyRetrofit = Retrofit.Builder()
+            .baseUrl(authProxyServer.url("/"))
+            .client(client)
+            .addConverterFactory(GsonConverterFactory.create(gson))
+            .build()
         val osuRetrofit = Retrofit.Builder()
             .baseUrl(osuServer.url("/"))
             .client(client)
@@ -103,7 +113,7 @@ class OsuApiPollerTest {
             .addConverterFactory(GsonConverterFactory.create(gson))
             .build()
 
-        authService = osuRetrofit.create(OsuAuthService::class.java)
+        authService = authProxyRetrofit.create(OsuAuthService::class.java)
         apiService = osuRetrofit.create(OsuApiService::class.java)
         publicBeatmapApi = catboyRetrofit.create(PublicBeatmapApiService::class.java)
         nerinyanApi = nerinyanRetrofit.create(NerinyanApiService::class.java)
@@ -128,6 +138,7 @@ class OsuApiPollerTest {
     @After
     fun tearDown() {
         poller.stopPolling()
+        authProxyServer.shutdown()
         osuServer.shutdown()
         catboyServer.shutdown()
         nerinyanServer.shutdown()
@@ -136,18 +147,34 @@ class OsuApiPollerTest {
     @Test
     fun `concurrent 401 responses trigger only one token refresh request`() = runBlocking {
         val refreshCount = AtomicInteger(0)
+        val capturedAuthHeader = AtomicReference<String?>(null)
+        val capturedContentType = AtomicReference<String?>(null)
+        val capturedAccept = AtomicReference<String?>(null)
+        val capturedRefreshBody = AtomicReference<String>("")
+
+        authProxyServer.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                return if (request.path == "/") {
+                    refreshCount.incrementAndGet()
+                    capturedAuthHeader.set(request.getHeader("Authorization"))
+                    capturedContentType.set(request.getHeader("Content-Type"))
+                    capturedAccept.set(request.getHeader("Accept"))
+                    capturedRefreshBody.set(request.body.readUtf8())
+                    Thread.sleep(120)
+                    MockResponse()
+                        .setResponseCode(200)
+                        .setBody(
+                            """{"access_token":"fresh-access-2","refresh_token":"fresh-refresh-2","expires_in":3600}"""
+                        )
+                } else {
+                    MockResponse().setResponseCode(404)
+                }
+            }
+        }
+
         osuServer.dispatcher = object : Dispatcher() {
             override fun dispatch(request: RecordedRequest): MockResponse {
                 return when (request.path) {
-                    "/oauth/token" -> {
-                        refreshCount.incrementAndGet()
-                        Thread.sleep(120)
-                        MockResponse()
-                            .setResponseCode(200)
-                            .setBody(
-                                """{"access_token":"fresh-access-2","refresh_token":"fresh-refresh-2","expires_in":3600}"""
-                            )
-                    }
                     "/api/v2/me" -> {
                         if (request.getHeader("Authorization") == "Bearer fresh-access-2") {
                             MockResponse()
@@ -176,6 +203,13 @@ class OsuApiPollerTest {
         assertTrue(users.all { it.username == "peppy" })
         assertEquals(1, refreshCount.get())
         assertEquals(1, tokenStore.updateCount.get())
+        assertNull(capturedAuthHeader.get())
+        assertTrue(capturedContentType.get().orEmpty().contains("application/json"))
+        assertEquals("application/json", capturedAccept.get())
+        val refreshBody = capturedRefreshBody.get()
+        assertTrue(refreshBody.contains("\"grant_type\":\"refresh_token\""))
+        assertTrue(refreshBody.contains("\"refresh_token\":\"stale-refresh-1\""))
+        assertFalse(refreshBody.contains("client_secret"))
         val updated = tokenStore.getOAuthTokens()
         assertNotNull(updated)
         assertEquals("fresh-access-2", updated?.accessToken)
@@ -184,7 +218,7 @@ class OsuApiPollerTest {
 
     @Test
     fun `revoked refresh token clears OAuth tokens and emits AuthFailed`() = runBlocking {
-        osuServer.enqueue(MockResponse().setResponseCode(400).setBody("""{"error":"invalid_grant"}"""))
+        authProxyServer.enqueue(MockResponse().setResponseCode(400).setBody("""{"error":"invalid_grant"}"""))
 
         val nextEvent = async { poller.events.first() }
         val result = poller.getValidBearerToken(forceRefresh = true, failedBearerToken = "Bearer stale-access-1")
@@ -198,6 +232,55 @@ class OsuApiPollerTest {
             OsuApiPoller.SESSION_EXPIRED_MESSAGE,
             (event as OsuApiPollerEvent.AuthFailed).message
         )
+    }
+
+    @Test
+    fun `authorization_code exchange posts JSON to worker proxy without client_secret or Bearer header`() = runBlocking {
+        authProxyServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody("""{"token_type":"Bearer","expires_in":86400,"access_token":"acc-1","refresh_token":"ref-1"}""")
+        )
+        authProxyServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody("""{"token_type":"Bearer","expires_in":86400,"access_token":"acc-2","refresh_token":"ref-2"}""")
+        )
+
+        val resWithoutVerifier = authService.exchangeAuthorizationCode(
+            OAuthTokenExchangeRequest(
+                code = "code-no-pkce",
+                redirectUri = OAuthConfig.REDIRECT_URI,
+                codeVerifier = null
+            )
+        )
+        assertEquals("acc-1", resWithoutVerifier.accessToken)
+        val req1 = authProxyServer.takeRequest()
+        assertEquals("POST", req1.method)
+        assertEquals("/", req1.path)
+        assertNull(req1.getHeader("Authorization"))
+        assertTrue(req1.getHeader("Content-Type").orEmpty().contains("application/json"))
+        assertEquals("application/json", req1.getHeader("Accept"))
+        val body1 = req1.body.readUtf8()
+        assertTrue(body1.contains("\"grant_type\":\"authorization_code\""))
+        assertTrue(body1.contains("\"code\":\"code-no-pkce\""))
+        assertTrue(body1.contains("\"redirect_uri\":\"http://127.0.0.1:42069/callback\""))
+        assertFalse(body1.contains("code_verifier"))
+        assertFalse(body1.contains("client_secret"))
+
+        val resWithVerifier = authService.exchangeAuthorizationCode(
+            OAuthTokenExchangeRequest(
+                code = "code-with-pkce",
+                redirectUri = OAuthConfig.REDIRECT_URI,
+                codeVerifier = "verifier-abc"
+            )
+        )
+        assertEquals("acc-2", resWithVerifier.accessToken)
+        val req2 = authProxyServer.takeRequest()
+        assertNull(req2.getHeader("Authorization"))
+        val body2 = req2.body.readUtf8()
+        assertTrue(body2.contains("\"code_verifier\":\"verifier-abc\""))
+        assertFalse(body2.contains("client_secret"))
     }
 
     @Test

@@ -48,4 +48,4 @@ Unit tests live under `app/src/test/java/com/osuchat/app/`:
 
 - Keep `applicationId` (`com.osuchat.app`) and OAuth callback URI (`osuchat://oauth/callback`) unchanged unless explicitly migrating OAuth credentials.
 - Release builds run with `isMinifyEnabled = true` and `isShrinkResources = true`; keep `app/proguard-rules.pro` synchronized with any new Gson DTOs, `@JavascriptInterface` bridges, Room entities/DAOs, Cronet classes, or Hilt entry points.
-- Never log OAuth tokens, `client_secret`, or Bancho IRC passwords.
+- Never log OAuth tokens or Bancho IRC passwords.

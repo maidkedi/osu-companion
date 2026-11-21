@@ -80,7 +80,7 @@ Complete engineering overview and changelog for **osu! Companion** (`com.osuchat
 2. **Release Logging Locked Down:** `HttpLoggingInterceptor` is `Level.NONE` in release (`!BuildConfig.DEBUG`) and redacts `Authorization`, `Cookie`, and `Set-Cookie` in debug. Codebase scan confirmed zero plaintext secret/token logs.
 3. **WebView & Bridge Hardening:** `RosuPpEngine` sanitizes/escapes JS strings, validates Base64/mod inputs, and isolates renderer crashes; In-App OAuth fallback strips `X-Requested-With` headers.
 4. **Input & Socket Hygiene:** `BanchoIrcClient` strips `\r`, `\n`, and `\u0000` from outbound IRC messages to block IRC command injection.
-5. **Known Architectural Debt (Direction):** `OAuthConfig.kt` still embeds a client-side OAuth `CLIENT_ID` / `CLIENT_SECRET` (suitable for companion/dev builds; production public distribution should use a backend token-exchange proxy or public-client PKCE flow supported by osu! without embedded secrets) and `release` `buildType` currently uses the debug signing config.
+5. **Historical Note (Resolved in v1.0.1):** Initial prototype embedded OAuth credentials and used debug signing; `v1.0.1` routes OAuth token exchange/refresh through a Cloudflare Worker proxy with zero embedded secrets and uses dedicated release signing.
 
 ---
 

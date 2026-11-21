@@ -5,6 +5,7 @@ import androidx.compose.runtime.Immutable
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.osuchat.app.data.network.OAuthConfig
 import com.osuchat.app.data.network.OsuApiException
 import com.osuchat.app.data.repository.ImageUploadRepository
 import com.osuchat.app.domain.model.AppSettings
@@ -386,16 +387,18 @@ class ChatViewModel @Inject constructor(
         }
 
         val isOAuthV2 = sessSnap.settings.authMode == AuthMode.OAUTH_V2
-        val requiresReauth = isOAuthV2 && repoRequiresReauth
-        val hasMoreApiHistory = isOAuthV2 && historyState.hasMore && !requiresReauth
-        val canSyncHistory = isOAuthV2 &&
+        val hasChatReadHistory = OAuthConfig.SUPPORTS_CHAT_READ_HISTORY
+        val requiresReauth = hasChatReadHistory && isOAuthV2 && repoRequiresReauth
+        val hasMoreApiHistory = hasChatReadHistory && isOAuthV2 && historyState.hasMore && !requiresReauth
+        val canSyncHistory = hasChatReadHistory &&
+            isOAuthV2 &&
             !requiresReauth &&
             channelId.isNotBlank() &&
             (!isMpRoom || historyState.oldestApiMessageId != null)
         val hasMoreLocalWindow = rawMessages.size >= windowLimit &&
             windowLimit < ChatRepository.MAX_MESSAGE_WINDOW
-        val canLoadOlderMessages = (hasMoreApiHistory && rawMessages.size < ChatRepository.MAX_MESSAGE_WINDOW) ||
-            hasMoreLocalWindow
+        val canLoadOlderMessages = hasChatReadHistory &&
+            ((hasMoreApiHistory && rawMessages.size < ChatRepository.MAX_MESSAGE_WINDOW) || hasMoreLocalWindow)
         val isDotOnly = chSnap.channel?.matchesNormalizedChannelSet(dotOnlyChannels)
             ?: (channelId.trim().lowercase(Locale.ROOT) in dotOnlyChannels)
 
@@ -467,7 +470,9 @@ class ChatViewModel @Inject constructor(
                 .distinctUntilChanged()
                 .collectLatest { chId ->
                     chatRepository.markChannelAsRead(chId)
-                    syncChannelHistoryInternal(userInitiated = false, targetChannelId = chId)
+                    if (OAuthConfig.SUPPORTS_CHAT_READ_HISTORY) {
+                        syncChannelHistoryInternal(userInitiated = false, targetChannelId = chId)
+                    }
                 }
         }
         viewModelScope.launch {
@@ -1765,6 +1770,7 @@ class ChatViewModel @Inject constructor(
         userInitiated: Boolean,
         targetChannelId: String = channelId
     ) {
+        if (!OAuthConfig.SUPPORTS_CHAT_READ_HISTORY) return
         val currentSettings = chatRepository.settings.first()
         if (currentSettings.authMode != AuthMode.OAUTH_V2) {
             if (userInitiated) {
@@ -1799,6 +1805,7 @@ class ChatViewModel @Inject constructor(
     }
 
     fun loadOlderMessages() {
+        if (!OAuthConfig.SUPPORTS_CHAT_READ_HISTORY) return
         val targetChannelId = channelId.trim()
         if (targetChannelId.isBlank()) return
         val currentUi = uiState.value

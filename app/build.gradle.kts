@@ -21,8 +21,8 @@ val keystoreProps = Properties().apply {
 fun escapeBuildConfig(value: String): String =
     value.replace("\\", "\\\\").replace("\"", "\\\"")
 
-val osuClientId = localProps.getProperty("osu.clientId")?.trim().orEmpty()
-val osuClientSecret = localProps.getProperty("osu.clientSecret")?.trim().orEmpty()
+val osuClientId = localProps.getProperty("osu.clientId")?.trim()
+    ?.takeIf { it.isNotEmpty() } ?: "75323"
 
 val releaseStoreFile = keystoreProps.getProperty("storeFile")?.trim()
     ?.takeIf { it.isNotEmpty() }
@@ -44,16 +44,13 @@ android {
         applicationId = "com.osuchat.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.0.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // Register an OAuth Application at https://osu.ppy.sh/home/account/edit#oauth
-        // with Application Callback URL set to: http://127.0.0.1:42069/callback
-        // Provide osu.clientId and osu.clientSecret in local.properties (see local.properties.example).
+        // Token exchange & refresh use the Cloudflare Worker proxy; only public Client ID is used.
         buildConfigField("String", "OSU_CLIENT_ID", "\"${escapeBuildConfig(osuClientId)}\"")
-        buildConfigField("String", "OSU_CLIENT_SECRET", "\"${escapeBuildConfig(osuClientSecret)}\"")
     }
 
     signingConfigs {

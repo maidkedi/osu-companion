@@ -279,10 +279,17 @@ object NetworkAndDatabaseModule {
 
     @Provides
     @Singleton
-    fun provideOsuAuthService(okHttpClient: OkHttpClient, gson: Gson): OsuAuthService {
+    fun provideOsuAuthService(gson: Gson): OsuAuthService {
+        val proxyClient = OkHttpClient.Builder()
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(20, TimeUnit.SECONDS)
+            .writeTimeout(15, TimeUnit.SECONDS)
+            .followRedirects(true)
+            .followSslRedirects(true)
+            .build()
         return Retrofit.Builder()
-            .baseUrl(OAuthConfig.BASE_API_URL)
-            .client(okHttpClient)
+            .baseUrl(OAuthConfig.OAUTH_TOKEN_PROXY_URL)
+            .client(proxyClient)
             .addConverterFactory(GsonConverterFactory.create(gson))
             .build()
             .create(OsuAuthService::class.java)

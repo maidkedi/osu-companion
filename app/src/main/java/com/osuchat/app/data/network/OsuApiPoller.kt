@@ -179,9 +179,10 @@ class OsuApiPoller internal constructor(
 
         return@withLock try {
             val refreshed = authService.refreshToken(
-                clientId = OAuthConfig.CLIENT_ID.trim(),
-                clientSecret = OAuthConfig.CLIENT_SECRET.trim(),
-                refreshToken = tokens.refreshToken
+                OAuthTokenRefreshRequest(
+                    grantType = "refresh_token",
+                    refreshToken = tokens.refreshToken
+                )
             )
             val newAccess = refreshed.accessToken?.trim().orEmpty()
             if (newAccess.isBlank()) {
@@ -474,6 +475,7 @@ class OsuApiPoller internal constructor(
     }
 
     fun startPolling() {
+        if (!OAuthConfig.SUPPORTS_CHAT_READ_HISTORY) return
         if (pollingJob?.isActive == true) return
         _isPolling.value = true
         pollingJob = scope.launch {

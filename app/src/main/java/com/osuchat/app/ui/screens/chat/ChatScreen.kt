@@ -140,6 +140,7 @@ import coil.compose.AsyncImage
 import coil.compose.AsyncImagePainter
 import coil.request.CachePolicy
 import coil.request.ImageRequest
+import com.osuchat.app.data.network.OAuthConfig
 import com.osuchat.app.di.NetworkAndDatabaseModule
 import com.osuchat.app.domain.model.AudioPlaybackState
 import com.osuchat.app.domain.model.BeatmapLinkRef
@@ -855,7 +856,9 @@ fun ChatScreen(
 
                 ChatStatusAndLoadingStrip(
                     isHistoryLoading = state.isLoadingHistory && !state.isLoadingOlderMessages,
-                    requiresChatReadReauth = state.requiresChatReadReauth && !reauthBannerDismissed,
+                    requiresChatReadReauth = OAuthConfig.SUPPORTS_CHAT_READ_HISTORY &&
+                        state.requiresChatReadReauth &&
+                        !reauthBannerDismissed,
                     historyError = state.historyError,
                     connectionStatus = state.connectionStatus,
                     onOpenSettings = onOpenSettings,
@@ -972,7 +975,7 @@ fun ChatScreen(
                             contentPadding = PaddingValues(horizontal = OsuSpacing.md, vertical = OsuSpacing.sm),
                             verticalArrangement = Arrangement.spacedBy(OsuSpacing.xxs)
                         ) {
-                            if (state.canLoadOlderMessages) {
+                            if (OAuthConfig.SUPPORTS_CHAT_READ_HISTORY && state.canLoadOlderMessages) {
                                 item(key = "load_older_messages", contentType = "pagination") {
                                     OlderMessagesPaginationHeader(
                                         isLoading = state.isLoadingOlderMessages,

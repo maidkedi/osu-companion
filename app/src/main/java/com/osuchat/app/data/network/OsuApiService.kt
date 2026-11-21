@@ -3,33 +3,31 @@ package com.osuchat.app.data.network
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.DELETE
-import retrofit2.http.Field
-import retrofit2.http.FormUrlEncoded
 import retrofit2.http.GET
 import retrofit2.http.Header
+import retrofit2.http.Headers
 import retrofit2.http.POST
 import retrofit2.http.PUT
 import retrofit2.http.Path
 import retrofit2.http.Query
 
 interface OsuAuthService {
-    @FormUrlEncoded
-    @POST("oauth/token")
+    @Headers(
+        "Accept: application/json",
+        "Content-Type: application/json"
+    )
+    @POST("/")
     suspend fun exchangeAuthorizationCode(
-        @Field("client_id") clientId: String = OAuthConfig.CLIENT_ID.trim(),
-        @Field("client_secret") clientSecret: String = OAuthConfig.CLIENT_SECRET.trim(),
-        @Field("code") code: String,
-        @Field("grant_type") grantType: String = "authorization_code",
-        @Field("redirect_uri") redirectUri: String = OAuthConfig.REDIRECT_URI
+        @Body request: OAuthTokenExchangeRequest
     ): OAuthTokenResponse
 
-    @FormUrlEncoded
-    @POST("oauth/token")
+    @Headers(
+        "Accept: application/json",
+        "Content-Type: application/json"
+    )
+    @POST("/")
     suspend fun refreshToken(
-        @Field("client_id") clientId: String = OAuthConfig.CLIENT_ID.trim(),
-        @Field("client_secret") clientSecret: String = OAuthConfig.CLIENT_SECRET.trim(),
-        @Field("refresh_token") refreshToken: String,
-        @Field("grant_type") grantType: String = "refresh_token"
+        @Body request: OAuthTokenRefreshRequest
     ): OAuthTokenResponse
 }
 

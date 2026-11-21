@@ -2,6 +2,18 @@ package com.osuchat.app.data.network
 
 import com.google.gson.annotations.SerializedName
 
+data class OAuthTokenExchangeRequest(
+    @SerializedName("grant_type") val grantType: String = "authorization_code",
+    @SerializedName("code") val code: String,
+    @SerializedName("redirect_uri") val redirectUri: String = OAuthConfig.REDIRECT_URI,
+    @SerializedName("code_verifier") val codeVerifier: String? = null
+)
+
+data class OAuthTokenRefreshRequest(
+    @SerializedName("grant_type") val grantType: String = "refresh_token",
+    @SerializedName("refresh_token") val refreshToken: String
+)
+
 data class OAuthTokenResponse(
     @SerializedName("token_type") val tokenType: String? = null,
     @SerializedName("expires_in") val expiresIn: Long = 0L,
