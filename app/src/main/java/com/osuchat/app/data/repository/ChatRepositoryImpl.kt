@@ -2538,7 +2538,7 @@ class ChatRepositoryImpl @Inject constructor(
         channelDao.clearUnread(normId)
         notificationManager.clearChannelNotifications(normId)
         val current = prefs.settingsFlow.first()
-        if (current.authMode == AuthMode.OAUTH_V2) {
+        if (OAuthConfig.SUPPORTS_CHAT_READ_HISTORY && current.authMode == AuthMode.OAUTH_V2) {
             val numericId = normId.toLongOrNull() ?: return@withContext
             val token = apiPoller.getValidBearerToken() ?: return@withContext
             val lastMsgId = messageDao.getLatestMessageId(normId)

@@ -27,8 +27,7 @@ object OAuthConfig {
     val SCOPES: List<String> = listOf(
         "public",
         "identify",
-        "friends.read",
-        "chat.write"
+        "friends.read"
     )
 
     val SUPPORTS_CHAT_READ_HISTORY: Boolean = "chat.read" in SCOPES

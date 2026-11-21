@@ -43,21 +43,22 @@ class ParserUnitTest {
     @Test
     fun buildsLoopbackOAuthAuthorizeUrlWithoutPkce() {
         assertEquals(
-            listOf("public", "identify", "friends.read", "chat.write"),
+            listOf("public", "identify", "friends.read"),
             OAuthConfig.SCOPES
         )
+        assertFalse("chat.write" in OAuthConfig.SCOPES)
         assertFalse(OAuthConfig.SUPPORTS_CHAT_READ_HISTORY)
 
         val explicitStateUrl = OAuthPkceManager().buildAuthorizeUrl("12345", state = "test-state")
         assertEquals(
-            "https://osu.ppy.sh/oauth/authorize?client_id=12345&redirect_uri=http%3A%2F%2F127.0.0.1%3A42069%2Fcallback&response_type=code&scope=public+identify+friends.read+chat.write&state=test-state",
+            "https://osu.ppy.sh/oauth/authorize?client_id=12345&redirect_uri=http%3A%2F%2F127.0.0.1%3A42069%2Fcallback&response_type=code&scope=public+identify+friends.read&state=test-state",
             explicitStateUrl
         )
 
         val manager = OAuthPkceManager()
         val defaultStateUrl = manager.buildAuthorizeUrl("12345")
         val prefix =
-            "https://osu.ppy.sh/oauth/authorize?client_id=12345&redirect_uri=http%3A%2F%2F127.0.0.1%3A42069%2Fcallback&response_type=code&scope=public+identify+friends.read+chat.write&state="
+            "https://osu.ppy.sh/oauth/authorize?client_id=12345&redirect_uri=http%3A%2F%2F127.0.0.1%3A42069%2Fcallback&response_type=code&scope=public+identify+friends.read&state="
         assertTrue(defaultStateUrl.startsWith(prefix))
         val generatedState = defaultStateUrl.removePrefix(prefix)
         assertTrue(generatedState.isNotBlank())
