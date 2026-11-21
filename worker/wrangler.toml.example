@@ -1,0 +1,16 @@
+# Example Cloudflare Workers configuration for self-hosting the OsuCompanion OAuth proxy.
+#
+# 1. Copy this file to `wrangler.toml`:
+#      cp wrangler.toml.example wrangler.toml
+# 2. Update `name` to your desired Worker name.
+# 3. Upload your osu! OAuth application credentials as encrypted Wrangler secrets
+#    (NEVER put real secrets directly into wrangler.toml):
+#      wrangler secret put OSU_CLIENT_ID
+#      wrangler secret put OSU_CLIENT_SECRET
+# 4. Deploy:
+#      wrangler deploy
+
+name = "your-osucompanion-auth-proxy"
+main = "index.js"
+compatibility_date = "2026-01-01"
+workers_dev = true

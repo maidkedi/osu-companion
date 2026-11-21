@@ -1,6 +1,8 @@
 package com.osuchat.app.data.repository
 
 import com.google.gson.GsonBuilder
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
@@ -83,7 +85,7 @@ class OsuTrackRepositoryTest {
 
         val recorded = server.takeRequest(2, TimeUnit.SECONDS)!!
         assertEquals("GET", recorded.method)
-        assertEquals("OsuChat-Android", recorded.getHeader("User-Agent"))
+        assertEquals("OsuCompanion/${com.osuchat.app.BuildConfig.VERSION_NAME}", recorded.getHeader("User-Agent"))
         assertNull(recorded.getHeader("Authorization"))
         val url = recorded.requestUrl!!
         assertEquals("/stats_history", url.encodedPath)
@@ -150,5 +152,30 @@ class OsuTrackRepositoryTest {
         assertNotNull(peak)
         assertEquals(512, peak!!.bestGlobalRank)
         assertEquals(99.12, peak.bestAccuracy!!, 1e-6)
+    }
+
+    @Test
+    fun fetchStatsHistory_cancellingFirstCallerDoesNotCancelCoalescedSecondCaller() = runBlocking {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBodyDelay(250, TimeUnit.MILLISECONDS)
+                .setBody("""[{"pp_raw": 6100.0, "pp_rank": 9000, "timestamp": "2026-06-12T00:00:00Z"}]""")
+        )
+
+        val firstCaller = async {
+            repository.fetchStatsHistory(userId = 888L, mode = "osu", days = 90)
+        }
+        val secondCaller = async {
+            repository.fetchStatsHistory(userId = 888L, mode = "osu", days = 90)
+        }
+
+        delay(50L)
+        firstCaller.cancel()
+
+        val secondResult = secondCaller.await()
+        assertTrue(secondResult.isSuccess)
+        assertEquals(6100.0, secondResult.getOrThrow().single().pp, 1e-6)
+        assertEquals(1, server.requestCount)
     }
 }

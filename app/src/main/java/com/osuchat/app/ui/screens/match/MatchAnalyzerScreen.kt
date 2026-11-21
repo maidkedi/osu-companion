@@ -51,8 +51,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -68,12 +70,14 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import com.osuchat.app.data.model.TrackedPlayerAlertConfig
 import com.osuchat.app.domain.model.MatchAnalysisGame
 import com.osuchat.app.domain.model.MatchAnalysisPlayerScore
 import com.osuchat.app.domain.model.MatchAnalyzedGameItem
 import com.osuchat.app.domain.model.MatchComputedAnalytics
 import com.osuchat.app.domain.model.MatchPlayerStanding
 import com.osuchat.app.domain.model.MpTeam
+import com.osuchat.app.domain.model.PlayerProfile
 import com.osuchat.app.ui.components.GradeBadge
 import com.osuchat.app.ui.components.OsuAccentBarContainer
 import com.osuchat.app.ui.components.OsuEmptyState
@@ -84,6 +88,7 @@ import com.osuchat.app.ui.components.OsuMicroTag
 import com.osuchat.app.ui.components.OsuSegmentedBar
 import com.osuchat.app.ui.components.PlayerAvatar
 import com.osuchat.app.ui.components.PlayerStatsBottomSheet
+import com.osuchat.app.ui.components.TrackedPlayerAlertsDialog
 import com.osuchat.app.ui.screens.home.BeatmapStatsBottomSheet
 import com.osuchat.app.ui.theme.LocalOsuSurfaces
 import com.osuchat.app.ui.theme.OsuMotion
@@ -113,6 +118,7 @@ fun MatchAnalyzerScreen(
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    var trackedAlertsDialogProfile by remember { mutableStateOf<PlayerProfile?>(null) }
 
     LaunchedEffect(Unit) {
         viewModel.effects.collect { effect ->
@@ -130,7 +136,13 @@ fun MatchAnalyzerScreen(
             onDismiss = viewModel::dismissPlayerProfile,
             onSaveAlias = viewModel::saveUserAlias,
             onStartDirectMessage = viewModel::startDirectMessage,
-            onToggleTrackPp = viewModel::toggleTrackFriendPp,
+            onToggleTrackPp = { prof ->
+                if (prof.isTrackedForPp) {
+                    viewModel.toggleTrackFriendPp(prof)
+                } else {
+                    trackedAlertsDialogProfile = prof
+                }
+            },
             selfUsername = state.selfUsername,
             onToggleFriend = viewModel::toggleFriendStatus,
             isIgnored = state.selectedProfile?.let { prof ->
@@ -151,7 +163,50 @@ fun MatchAnalyzerScreen(
             osuTrackHistory = state.selectedProfileOsuTrack,
             isOsuTrackLoading = state.isSelectedProfileOsuTrackLoading,
             errorMessage = state.profileError,
-            onRetry = viewModel::retryLoadPlayerProfile
+            onRetry = viewModel::retryLoadPlayerProfile,
+            trackedAlertConfig = state.selectedProfile?.let { prof ->
+                state.trackedAlertConfigs[
+                    TrackedPlayerAlertConfig.configKey(prof.userId, state.selectedProfileMode)
+                ]
+            },
+            defaultTrackedTopPlayLimit = state.defaultTrackedTopPlayLimit,
+            onConfigureTrackedAlerts = { prof ->
+                trackedAlertsDialogProfile = prof
+            }
+        )
+    }
+
+    trackedAlertsDialogProfile?.let { targetProf ->
+        val mode = state.selectedProfileMode
+        val configKey = TrackedPlayerAlertConfig.configKey(targetProf.userId, mode)
+        val initialConfig = state.trackedAlertConfigs[configKey] ?: TrackedPlayerAlertConfig()
+        TrackedPlayerAlertsDialog(
+            username = targetProf.username,
+            mode = mode,
+            currentPp = targetProf.pp,
+            currentRank = targetProf.globalRank,
+            initialConfig = initialConfig,
+            defaultTopPlayLimit = state.defaultTrackedTopPlayLimit,
+            isAlreadyTracked = targetProf.isTrackedForPp,
+            onUntrack = if (targetProf.isTrackedForPp) {
+                {
+                    viewModel.toggleTrackFriendPp(targetProf)
+                    trackedAlertsDialogProfile = null
+                }
+            } else {
+                null
+            },
+            onSave = { updated ->
+                viewModel.saveTrackedPlayerAlertConfig(
+                    userId = targetProf.userId,
+                    mode = mode,
+                    config = updated,
+                    username = targetProf.username,
+                    avatarUrl = targetProf.avatarUrl
+                )
+                trackedAlertsDialogProfile = null
+            },
+            onDismiss = { trackedAlertsDialogProfile = null }
         )
     }
 

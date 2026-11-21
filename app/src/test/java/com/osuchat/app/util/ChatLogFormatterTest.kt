@@ -86,6 +86,6 @@ class ChatLogFormatterTest {
             timestampMillis = 1_700_000_000_000L,
             zoneId = ZoneOffset.UTC
         )
-        assertEquals("osuchat_mp_998877_20231114_2213.txt", name)
+        assertEquals("osucompanion_mp_998877_20231114_2213.txt", name)
     }
 }

@@ -174,7 +174,7 @@ fun OsuScoreCard(
                 val hasDiff = score.beatmapVersion.isNotBlank()
                 val starsText = score.starRating.takeIf { it.isFinite() && it > 0.0 }
                     ?.let { String.format(Locale.US, "★%.2f", it) }
-                val modsText = score.modsLabel.takeIf { it.isNotBlank() }
+                val modsText = score.gameplayModsLabel.takeIf { it.isNotBlank() }
 
                 if (hasDiff || starsText != null || modsText != null) {
                     Row(
@@ -242,6 +242,19 @@ fun OsuScoreCard(
                         },
                         maxLines = 1,
                         softWrap = false
+                    )
+                    OsuMicroTag(
+                        text = score.clientBadgeLabel,
+                        containerColor = if (score.isLazer) {
+                            surfaces.accentSubtle
+                        } else {
+                            MaterialTheme.colorScheme.surfaceContainerHigh
+                        },
+                        contentColor = if (score.isLazer) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        }
                     )
                 }
             }

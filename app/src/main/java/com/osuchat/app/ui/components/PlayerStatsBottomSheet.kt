@@ -44,6 +44,7 @@ import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.NotificationsNone
 import androidx.compose.material.icons.rounded.PersonAdd
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Button
@@ -85,6 +86,7 @@ import androidx.compose.ui.unit.dp
 import coil.ImageLoader
 import coil.compose.AsyncImage
 import com.osuchat.app.data.local.SelfProfileCacheDao
+import com.osuchat.app.data.model.TrackedPlayerAlertConfig
 import com.osuchat.app.data.repository.MedalsCatalogRepository
 import com.osuchat.app.di.ExternalChatImageClient
 import com.osuchat.app.domain.model.DailySessionSummary
@@ -113,6 +115,7 @@ import com.osuchat.app.ui.theme.tnum
 import com.osuchat.app.util.BeatmapUrlParser
 import com.osuchat.app.util.RankPpMath
 import com.osuchat.app.util.SessionTrackerCalculator
+import com.osuchat.app.util.TrackedPlayerAlertEngine
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
@@ -169,7 +172,10 @@ fun PlayerStatsBottomSheet(
     osuTrackHistory: List<OsuTrackPoint> = emptyList(),
     isOsuTrackLoading: Boolean = false,
     errorMessage: String? = null,
-    onRetry: (() -> Unit)? = null
+    onRetry: (() -> Unit)? = null,
+    trackedAlertConfig: TrackedPlayerAlertConfig? = null,
+    defaultTrackedTopPlayLimit: Int = TrackedPlayerAlertConfig.DEFAULT_TOP_PLAY_LIMIT,
+    onConfigureTrackedAlerts: ((PlayerProfile) -> Unit)? = null
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -213,7 +219,10 @@ fun PlayerStatsBottomSheet(
             osuTrackHistory = osuTrackHistory,
             isOsuTrackLoading = isOsuTrackLoading,
             errorMessage = errorMessage,
-            onRetry = onRetry
+            onRetry = onRetry,
+            trackedAlertConfig = trackedAlertConfig,
+            defaultTrackedTopPlayLimit = defaultTrackedTopPlayLimit,
+            onConfigureTrackedAlerts = onConfigureTrackedAlerts
         )
     }
 }
@@ -249,7 +258,10 @@ fun PlayerProfileContent(
     onRefreshDailySession: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
     errorMessage: String? = null,
-    onRetry: (() -> Unit)? = null
+    onRetry: (() -> Unit)? = null,
+    trackedAlertConfig: TrackedPlayerAlertConfig? = null,
+    defaultTrackedTopPlayLimit: Int = TrackedPlayerAlertConfig.DEFAULT_TOP_PLAY_LIMIT,
+    onConfigureTrackedAlerts: ((PlayerProfile) -> Unit)? = null
 ) {
     val context = LocalContext.current
     val surfaces = LocalOsuSurfaces.current
@@ -811,6 +823,14 @@ fun PlayerProfileContent(
                     }
 
                     if ((onToggleTrackPp != null && profile.userId > 0L) || canIgnoreProfile) {
+                        val trackingLabel = if (profile.isTrackedForPp) {
+                            TrackedPlayerAlertEngine.formatTrackingChipLabel(
+                                config = trackedAlertConfig,
+                                defaultLimit = defaultTrackedTopPlayLimit
+                            )
+                        } else {
+                            "Track player"
+                        }
                         @OptIn(ExperimentalLayoutApi::class)
                         FlowRow(
                             horizontalArrangement = Arrangement.spacedBy(OsuSpacing.sm),
@@ -818,15 +838,30 @@ fun PlayerProfileContent(
                         ) {
                             if (onToggleTrackPp != null && profile.userId > 0L) {
                                 OsuFilterChip(
-                                    label = if (profile.isTrackedForPp) "Tracking Top 5 PP" else "Track Top 5 PP",
+                                    label = trackingLabel,
                                     selected = profile.isTrackedForPp,
-                                    onClick = { onToggleTrackPp(profile) },
+                                    onClick = {
+                                        if (!profile.isTrackedForPp && onConfigureTrackedAlerts != null) {
+                                            onConfigureTrackedAlerts(profile)
+                                        } else {
+                                            onToggleTrackPp(profile)
+                                        }
+                                    },
                                     leadingIcon = if (profile.isTrackedForPp) {
                                         Icons.Rounded.NotificationsActive
                                     } else {
                                         Icons.Rounded.NotificationsNone
-                                    }
+                                    },
+                                    isNumeric = profile.isTrackedForPp
                                 )
+                                if (profile.isTrackedForPp && onConfigureTrackedAlerts != null) {
+                                    OsuFilterChip(
+                                        label = "Alert rules",
+                                        selected = false,
+                                        onClick = { onConfigureTrackedAlerts(profile) },
+                                        leadingIcon = Icons.Rounded.Tune
+                                    )
+                                }
                             }
                             if (canIgnoreProfile && onToggleIgnore != null) {
                                 OsuFilterChip(

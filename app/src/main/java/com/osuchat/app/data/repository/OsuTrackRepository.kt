@@ -3,13 +3,16 @@ package com.osuchat.app.data.repository
 import com.google.gson.Gson
 import com.google.gson.JsonParser
 import com.google.gson.annotations.SerializedName
+import com.osuchat.app.BuildConfig
 import com.osuchat.app.domain.model.OsuTrackPeak
 import com.osuchat.app.domain.model.OsuTrackPoint
 import com.osuchat.app.util.RankPpMath
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -75,6 +78,7 @@ class OsuTrackRepository internal constructor(
     private val peakCache = ConcurrentHashMap<CacheKey, PeakCacheEntry>()
     private val inFlightHistory = ConcurrentHashMap<Pair<CacheKey, Int>, CompletableDeferred<Result<List<OsuTrackPoint>>>>()
     private val inFlightPeak = ConcurrentHashMap<CacheKey, CompletableDeferred<Result<OsuTrackPeak?>>>()
+    private val coalescingScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     @Volatile
     private var rateLimitUntilMs: Long = 0L
@@ -110,29 +114,28 @@ class OsuTrackRepository internal constructor(
             return existingDeferred.await()
         }
 
-        val result = try {
-            withContext(Dispatchers.IO) {
-                fetchStatsHistoryFromNetwork(
+        coalescingScope.launch {
+            try {
+                val res = fetchStatsHistoryFromNetwork(
                     userId = userId,
                     modeInt = modeInt,
                     days = safeDays,
                     key = key,
                     staleCache = cached
                 )
+                newDeferred.complete(res)
+            } catch (ce: CancellationException) {
+                val fallback = cached?.let { Result.success(it.points) } ?: Result.failure(ce)
+                newDeferred.complete(fallback)
+                throw ce
+            } catch (t: Throwable) {
+                val fallback = cached?.let { Result.success(it.points) } ?: Result.failure(t)
+                newDeferred.complete(fallback)
+            } finally {
+                inFlightHistory.remove(flightKey, newDeferred)
             }
-        } catch (ce: CancellationException) {
-            newDeferred.cancel(ce)
-            inFlightHistory.remove(flightKey, newDeferred)
-            throw ce
-        } catch (t: Throwable) {
-            val fallback = cached?.let { Result.success(it.points) } ?: Result.failure(t)
-            newDeferred.complete(fallback)
-            inFlightHistory.remove(flightKey, newDeferred)
-            return fallback
         }
-        newDeferred.complete(result)
-        inFlightHistory.remove(flightKey, newDeferred)
-        return result
+        return newDeferred.await()
     }
 
     private fun fetchStatsHistoryFromNetwork(
@@ -218,23 +221,22 @@ class OsuTrackRepository internal constructor(
             return existingDeferred.await()
         }
 
-        val result = try {
-            withContext(Dispatchers.IO) {
-                fetchPeakFromNetwork(userId, modeInt, key, cached)
+        coalescingScope.launch {
+            try {
+                val res = fetchPeakFromNetwork(userId, modeInt, key, cached)
+                newDeferred.complete(res)
+            } catch (ce: CancellationException) {
+                val fallback = cached?.let { Result.success(it.peak) } ?: Result.failure(ce)
+                newDeferred.complete(fallback)
+                throw ce
+            } catch (t: Throwable) {
+                val fallback = cached?.let { Result.success(it.peak) } ?: Result.failure(t)
+                newDeferred.complete(fallback)
+            } finally {
+                inFlightPeak.remove(key, newDeferred)
             }
-        } catch (ce: CancellationException) {
-            newDeferred.cancel(ce)
-            inFlightPeak.remove(key, newDeferred)
-            throw ce
-        } catch (t: Throwable) {
-            val fallback = cached?.let { Result.success(it.peak) } ?: Result.failure(t)
-            newDeferred.complete(fallback)
-            inFlightPeak.remove(key, newDeferred)
-            return fallback
         }
-        newDeferred.complete(result)
-        inFlightPeak.remove(key, newDeferred)
-        return result
+        return newDeferred.await()
     }
 
     private fun fetchPeakFromNetwork(
@@ -362,7 +364,7 @@ class OsuTrackRepository internal constructor(
 
     companion object {
         private const val DEFAULT_BASE_URL = "https://osutrack-api.ameo.dev/"
-        private const val USER_AGENT = "OsuChat-Android"
+        private val USER_AGENT: String = "OsuCompanion/${BuildConfig.VERSION_NAME}"
         private const val CACHE_TTL_MS = 15L * 60L * 1000L
         private const val RATE_LIMIT_COOLDOWN_MS = 60_000L
         private const val MAX_CACHE_ENTRIES = 128

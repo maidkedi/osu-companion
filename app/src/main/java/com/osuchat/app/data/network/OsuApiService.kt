@@ -142,6 +142,7 @@ interface OsuApiService {
         @Path("beatmapset") beatmapsetId: Long
     ): OsuBeatmapsetDto
 
+    @Headers("x-api-version: 20220705")
     @GET("api/v2/beatmaps/{beatmap}/scores")
     suspend fun getBeatmapScores(
         @Header("Authorization") bearerToken: String,
@@ -149,6 +150,7 @@ interface OsuApiService {
         @Query("mode") mode: String? = null
     ): OsuBeatmapScoresResponseDto
 
+    @Headers("x-api-version: 20220705")
     @GET("api/v2/beatmaps/{beatmap}/scores/users/{user}/all")
     suspend fun getUserBeatmapScores(
         @Header("Authorization") bearerToken: String,
@@ -157,6 +159,7 @@ interface OsuApiService {
         @Query("mode") mode: String? = null
     ): OsuUserBeatmapScoresResponseDto
 
+    @Headers("x-api-version: 20220705")
     @GET("api/v2/users/{user}/scores/{type}")
     suspend fun getUserScores(
         @Header("Authorization") bearerToken: String,

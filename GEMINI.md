@@ -4,7 +4,7 @@ Android companion app for osu! Bancho IRC chat, OAuth2 PKCE API v2 access, multi
 
 ## Build & Tech Stack
 
-- **Package / SDK:** `namespace` and `applicationId` = `com.osuchat.app`, `minSdk = 26`, `targetSdk = 35`, `compileSdk = 35`, `versionName = "1.0.0"`, Java/Kotlin `17` (`app/build.gradle.kts`).
+- **Package / SDK:** `namespace` and `applicationId` = `com.osuchat.app`, `minSdk = 26`, `targetSdk = 35`, `compileSdk = 35`, `versionCode = 4`, `versionName = "1.0.3"`, Java/Kotlin `17` (`app/build.gradle.kts`).
 - **Plugins:** `android.application`, `kotlin.android`, `kotlin.compose`, `ksp`, `hilt`.
 - **UI:** Jetpack Compose (`compose-bom`), Material 3, Navigation Compose, Activity Compose, Coil Compose.
 - **DI & Async:** Hilt (`hilt-android` + KSP `hilt-compiler`), Kotlin Coroutines, Lifecycle (`runtime-compose`, `viewmodel-compose`, `process`).

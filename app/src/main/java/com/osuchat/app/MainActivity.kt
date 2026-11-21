@@ -36,6 +36,7 @@ import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
@@ -43,11 +44,10 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.CloudOff
-import androidx.compose.material.icons.filled.ErrorOutline
-import androidx.compose.material.icons.filled.Timer
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.CloudOff
+import androidx.compose.material.icons.rounded.ErrorOutline
+import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -99,15 +99,17 @@ import com.osuchat.app.service.ActiveMpTimer
 import com.osuchat.app.service.ChatConnectionService
 import com.osuchat.app.service.MpTimerManager
 import com.osuchat.app.ui.components.AppUpdateDialog
+import com.osuchat.app.ui.components.OsuHairlineDivider
 import com.osuchat.app.ui.screens.chat.ChatScreen
 import com.osuchat.app.ui.screens.home.HomeScreen
 import com.osuchat.app.ui.screens.login.LoginScreen
 import com.osuchat.app.ui.screens.match.MatchAnalyzerScreen
 import com.osuchat.app.ui.screens.settings.SettingsScreen
 import com.osuchat.app.ui.theme.OsuChatTheme
-import com.osuchat.app.ui.theme.OsuPink
 import com.osuchat.app.ui.theme.OsuRadius
+import com.osuchat.app.ui.theme.OsuSpacing
 import com.osuchat.app.ui.theme.StatusOffline
+import com.osuchat.app.ui.theme.osuHairlineBorder
 import com.osuchat.app.ui.theme.tnum
 import com.osuchat.app.util.AppShortcutManager
 import com.osuchat.app.util.ExternalOsuTarget
@@ -934,16 +936,16 @@ private fun GlobalConnectionBanner(state: GlobalBannerState) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .statusBarsPadding()
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                    .padding(horizontal = OsuSpacing.md, vertical = OsuSpacing.xs),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
-                    imageVector = if (state.isError) Icons.Default.ErrorOutline else Icons.Default.CloudOff,
+                    imageVector = if (state.isError) Icons.Rounded.ErrorOutline else Icons.Rounded.CloudOff,
                     contentDescription = null,
                     tint = iconTint,
                     modifier = Modifier.size(16.dp)
                 )
-                Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(OsuSpacing.sm))
                 Text(
                     text = state.message,
                     style = MaterialTheme.typography.bodySmall,
@@ -952,11 +954,11 @@ private fun GlobalConnectionBanner(state: GlobalBannerState) {
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
                 )
-                Spacer(modifier = Modifier.width(6.dp))
+                Spacer(modifier = Modifier.width(OsuSpacing.xs))
                 TextButton(
                     onClick = state.onAction,
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
-                    modifier = Modifier.height(30.dp)
+                    contentPadding = PaddingValues(horizontal = OsuSpacing.md, vertical = OsuSpacing.xs),
+                    modifier = Modifier.heightIn(min = 44.dp)
                 ) {
                     Text(
                         text = state.actionLabel,
@@ -967,18 +969,18 @@ private fun GlobalConnectionBanner(state: GlobalBannerState) {
                 if (state.onDismiss != null) {
                     IconButton(
                         onClick = state.onDismiss,
-                        modifier = Modifier.size(28.dp)
+                        modifier = Modifier.size(44.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Close,
+                            imageVector = Icons.Rounded.Close,
                             contentDescription = "Dismiss",
                             tint = fgColor,
-                            modifier = Modifier.size(15.dp)
+                            modifier = Modifier.size(16.dp)
                         )
                     }
                 }
             }
-            HorizontalDivider(thickness = OsuRadius.hairline, color = borderColor)
+            OsuHairlineDivider(color = borderColor)
         }
     }
 }
@@ -991,14 +993,15 @@ private fun GlobalMpTimerBanner(
     onDismiss: () -> Unit
 ) {
     val isUrgent = timer.remainingSeconds <= 15
+    val primaryColor = MaterialTheme.colorScheme.primary
     val bgColor = if (isUrgent) {
-        OsuPink.copy(alpha = 0.14f)
+        primaryColor.copy(alpha = 0.14f)
     } else {
         MaterialTheme.colorScheme.surfaceContainerLow
     }
-    val accentColor = if (isUrgent) OsuPink else MaterialTheme.colorScheme.primary
+    val accentColor = primaryColor
     val borderColor = if (isUrgent) {
-        OsuPink.copy(alpha = 0.45f)
+        primaryColor.copy(alpha = 0.45f)
     } else {
         MaterialTheme.colorScheme.outlineVariant
     }
@@ -1017,16 +1020,16 @@ private fun GlobalMpTimerBanner(
                 modifier = Modifier
                     .fillMaxWidth()
                     .let { if (applyStatusBarsPadding) it.statusBarsPadding() else it }
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                    .padding(horizontal = OsuSpacing.md, vertical = OsuSpacing.xs),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
-                    imageVector = Icons.Default.Timer,
+                    imageVector = Icons.Rounded.Timer,
                     contentDescription = null,
                     tint = accentColor,
                     modifier = Modifier.size(16.dp)
                 )
-                Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(OsuSpacing.sm))
                 Text(
                     text = "${timer.roomName} · ${timer.label}",
                     style = MaterialTheme.typography.bodySmall,
@@ -1035,7 +1038,7 @@ private fun GlobalMpTimerBanner(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
                 )
-                Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(OsuSpacing.sm))
                 Surface(
                     shape = RoundedCornerShape(OsuRadius.xs),
                     color = accentColor.copy(alpha = 0.15f),
@@ -1046,25 +1049,25 @@ private fun GlobalMpTimerBanner(
                     Text(
                         text = timeText,
                         style = MaterialTheme.typography.labelMedium.tnum(),
-                        fontWeight = FontWeight.Bold,
+                        fontWeight = FontWeight.SemiBold,
                         color = accentColor,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        modifier = Modifier.padding(horizontal = OsuSpacing.xs, vertical = 2.dp)
                     )
                 }
-                Spacer(modifier = Modifier.width(4.dp))
+                Spacer(modifier = Modifier.width(OsuSpacing.xs))
                 IconButton(
                     onClick = onDismiss,
-                    modifier = Modifier.size(28.dp)
+                    modifier = Modifier.size(44.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Close,
+                        imageVector = Icons.Rounded.Close,
                         contentDescription = "Dismiss timer banner",
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(15.dp)
+                        modifier = Modifier.size(16.dp)
                     )
                 }
             }
-            HorizontalDivider(thickness = OsuRadius.hairline, color = borderColor)
+            OsuHairlineDivider(color = borderColor)
         }
     }
 }
@@ -1165,7 +1168,7 @@ private fun CloudflareVerificationDialog(
         }
     }
 
-    val dialogShape = RoundedCornerShape(OsuRadius.lg)
+    val dialogShape = RoundedCornerShape(OsuRadius.xl)
     val webViewShape = RoundedCornerShape(OsuRadius.xs)
 
     Dialog(
@@ -1179,27 +1182,27 @@ private fun CloudflareVerificationDialog(
         Surface(
             modifier = Modifier
                 .fillMaxWidth(0.94f)
-                .padding(vertical = 24.dp),
+                .padding(vertical = OsuSpacing.xxl),
             shape = dialogShape,
-            color = MaterialTheme.colorScheme.surfaceContainerLow,
-            border = BorderStroke(OsuRadius.hairline, MaterialTheme.colorScheme.outlineVariant)
+            color = MaterialTheme.colorScheme.surfaceContainer,
+            border = osuHairlineBorder()
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp)
+                    .padding(OsuSpacing.lg)
             ) {
                 Text(
                     text = stringResource(R.string.cf_verify_title),
                     style = MaterialTheme.typography.titleMedium
                 )
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(OsuSpacing.xs))
                 Text(
                     text = stringResource(R.string.cf_verify_subtitle),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(OsuSpacing.md))
 
                 Box(
                     modifier = Modifier
@@ -1258,10 +1261,10 @@ private fun CloudflareVerificationDialog(
                     }
                 }
 
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(OsuSpacing.md))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)
+                    horizontalArrangement = Arrangement.spacedBy(OsuSpacing.sm, Alignment.End)
                 ) {
                     TextButton(
                         onClick = { completeCancelled() },

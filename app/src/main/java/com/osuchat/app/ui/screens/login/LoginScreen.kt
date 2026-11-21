@@ -117,9 +117,9 @@ fun LoginScreen(
     var showIrcTutorialModal by rememberSaveable { mutableStateOf(false) }
     var inAppOAuthUrl by remember { mutableStateOf<String?>(null) }
     var lastAttempt by rememberSaveable { mutableStateOf(AuthAttemptType.OAUTH_EXTERNAL) }
-    var step2IrcPassword by rememberSaveable { mutableStateOf("") }
+    var step2IrcPassword by remember { mutableStateOf("") }
     var ircUsername by rememberSaveable { mutableStateOf("") }
-    var ircPassword by rememberSaveable { mutableStateOf("") }
+    var ircPassword by remember { mutableStateOf("") }
     var passwordVisible by rememberSaveable { mutableStateOf(false) }
 
     val isStep2Onboarding = state.settings.authMode == AuthMode.OAUTH_V2 && !state.settings.hasIrcPassword
@@ -220,7 +220,7 @@ fun LoginScreen(
                     verticalArrangement = Arrangement.spacedBy(OsuSpacing.xxs)
                 ) {
                     Text(
-                        text = "osu! Companion",
+                        text = "OsuCompanion",
                         style = MaterialTheme.typography.headlineSmall,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -276,7 +276,7 @@ fun LoginScreen(
                             )
                             IconButton(
                                 onClick = viewModel::clearError,
-                                modifier = Modifier.size(32.dp)
+                                modifier = Modifier.size(44.dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.Rounded.Close,
@@ -402,7 +402,7 @@ fun LoginScreen(
                         )
                         Spacer(modifier = Modifier.height(OsuSpacing.xs))
                         Text(
-                            text = "Required for irc.ppy.sh:6667 live chat and DMs",
+                            text = "Required for live chat and DMs (Bancho legacy IRC uses unencrypted TCP on irc.ppy.sh:6667)",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -621,7 +621,7 @@ fun LoginScreen(
                                     style = MaterialTheme.typography.titleSmall
                                 )
                                 Text(
-                                    text = "irc.ppy.sh:6667",
+                                    text = "irc.ppy.sh:6667 · unencrypted TCP",
                                     style = MaterialTheme.typography.labelSmall.tnum(),
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -914,6 +914,8 @@ private fun InAppOAuthWebViewDialog(
                                 settings.apply {
                                     javaScriptEnabled = true
                                     domStorageEnabled = true
+                                    allowFileAccess = false
+                                    allowContentAccess = false
                                     useWideViewPort = true
                                     loadWithOverviewMode = true
                                     userAgentString = userAgentString

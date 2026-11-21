@@ -113,7 +113,7 @@ class RosuPpEngine @Inject constructor(
             if (clean.isEmpty()) return ""
             val hasHr = "HR" in clean
             return clean.filter { mod ->
-                mod != "NM" && mod != "NONE" && !(mod == "EZ" && hasHr)
+                mod != "NM" && mod != "NONE" && mod != "CL" && !(mod == "EZ" && hasHr)
             }.sorted().joinToString("")
         }
 
@@ -123,19 +123,33 @@ class RosuPpEngine @Inject constructor(
             clockRate?.takeIf { it.isFinite() && it > 0.0 }?.coerceIn(0.5, 2.0)
 
         internal fun escapeJsStringLiteral(value: String): String {
-            val quoted = JSONObject.quote(value)
-            val sb = StringBuilder(quoted.length + 8)
-            for (ch in quoted) {
+            val sb = StringBuilder(value.length + 12)
+            sb.append('"')
+            for (ch in value) {
                 when (ch) {
+                    '\\' -> sb.append("\\\\")
+                    '"' -> sb.append("\\\"")
                     '\'' -> sb.append("\\u0027")
                     '<' -> sb.append("\\u003c")
                     '>' -> sb.append("\\u003e")
                     '&' -> sb.append("\\u0026")
+                    '\b' -> sb.append("\\b")
+                    '\u000C' -> sb.append("\\f")
+                    '\n' -> sb.append("\\n")
+                    '\r' -> sb.append("\\r")
+                    '\t' -> sb.append("\\t")
                     '\u2028' -> sb.append("\\u2028")
                     '\u2029' -> sb.append("\\u2029")
-                    else -> sb.append(ch)
+                    else -> {
+                        if (ch.code < 0x20) {
+                            sb.append("\\u%04x".format(java.util.Locale.US, ch.code))
+                        } else {
+                            sb.append(ch)
+                        }
+                    }
                 }
             }
+            sb.append('"')
             return sb.toString()
         }
 
@@ -147,7 +161,8 @@ class RosuPpEngine @Inject constructor(
             accuracyPercent: Double,
             nMisses: Int = 0,
             combo: Int? = null,
-            clockRate: Double? = null
+            clockRate: Double? = null,
+            isLazer: Boolean = false
         ): String {
             require(requestId >= 0L) { "Invalid requestId" }
             require(BASE64_PATTERN.matches(osuBase64)) { "Invalid base64 payload" }
@@ -158,7 +173,7 @@ class RosuPpEngine @Inject constructor(
             val escapedOsu = escapeJsStringLiteral(osuBase64)
             val escapedMode = escapeJsStringLiteral(modeArg)
             val escapedMods = escapeJsStringLiteral(modsArg)
-            return "window.calculateRosu($requestId, $escapedOsu, $escapedMode, $escapedMods, $safeAcc, $safeMisses, $safeCombo, $safeRate);"
+            return "window.calculateRosu($requestId, $escapedOsu, $escapedMode, $escapedMods, $safeAcc, $safeMisses, $safeCombo, $safeRate, $isLazer);"
         }
 
         internal fun buildCalculateScript(
@@ -169,7 +184,8 @@ class RosuPpEngine @Inject constructor(
             accuracyPercent: Double,
             nMisses: Int = 0,
             combo: Int? = null,
-            clockRate: Double? = null
+            clockRate: Double? = null,
+            isLazer: Boolean = false
         ): String {
             require(requestId >= 0L) { "Invalid requestId" }
             require(BASE64_PATTERN.matches(osuBase64)) { "Invalid base64 payload" }
@@ -180,7 +196,7 @@ class RosuPpEngine @Inject constructor(
             val safeRate = sanitizeClockRate(clockRate)?.toString() ?: "null"
             val escapedOsu = escapeJsStringLiteral(osuBase64)
             val escapedMode = escapeJsStringLiteral(modeArg)
-            return "window.calculateRosu($requestId, $escapedOsu, $escapedMode, $safeBitmask, $safeAcc, $safeMisses, $safeCombo, $safeRate);"
+            return "window.calculateRosu($requestId, $escapedOsu, $escapedMode, $safeBitmask, $safeAcc, $safeMisses, $safeCombo, $safeRate, $isLazer);"
         }
 
         internal fun evictDiskCacheLocked(
@@ -265,7 +281,8 @@ class RosuPpEngine @Inject constructor(
         accuracyPercent: Double,
         nMisses: Int = 0,
         combo: Int? = null,
-        clockRate: Double? = null
+        clockRate: Double? = null,
+        isLazer: Boolean = true
     ): SimulatedBeatmapStats {
         val safeAcc = if (accuracyPercent.isFinite()) accuracyPercent.coerceIn(0.0, 100.0) else 100.0
         val safeMisses = nMisses.coerceAtLeast(0)
@@ -277,7 +294,8 @@ class RosuPpEngine @Inject constructor(
             accuracyPercent = safeAcc,
             nMisses = safeMisses,
             combo = safeCombo,
-            clockRate = safeRate
+            clockRate = safeRate,
+            isLazer = isLazer
         )
         if (meta.beatmapId <= 0L) return fallback
 
@@ -289,7 +307,8 @@ class RosuPpEngine @Inject constructor(
             accuracyPercent = safeAcc,
             nMisses = safeMisses,
             combo = safeCombo,
-            clockRate = safeRate
+            clockRate = safeRate,
+            isLazer = isLazer
         ) ?: return fallback
 
         val resolvedRate = raw.clockRate.takeIf { it.isFinite() && it > 0.0 } ?: fallback.clockRate
@@ -322,7 +341,8 @@ class RosuPpEngine @Inject constructor(
             nMisses = safeMisses,
             combo = safeCombo?.let { c -> resolvedMaxCombo?.let { c.coerceIn(1, it) } ?: c },
             maxCombo = resolvedMaxCombo,
-            clockRate = resolvedRate
+            clockRate = resolvedRate,
+            isLazer = isLazer
         )
     }
 
@@ -333,7 +353,8 @@ class RosuPpEngine @Inject constructor(
         accuracyPercent: Double,
         nMisses: Int = 0,
         combo: Int? = null,
-        clockRate: Double? = null
+        clockRate: Double? = null,
+        isLazer: Boolean = false
     ): RawRosuResult? {
         if (beatmapId <= 0L) return null
         val modsArg = sanitizeModsForJs(mods)
@@ -346,7 +367,8 @@ class RosuPpEngine @Inject constructor(
                 accuracyPercent = accuracyPercent,
                 nMisses = nMisses,
                 combo = combo,
-                clockRate = clockRate
+                clockRate = clockRate,
+                isLazer = isLazer
             )
         }
     }
@@ -358,7 +380,8 @@ class RosuPpEngine @Inject constructor(
         accuracyPercent: Double,
         nMisses: Int = 0,
         combo: Int? = null,
-        clockRate: Double? = null
+        clockRate: Double? = null,
+        isLazer: Boolean = false
     ): RawRosuResult? {
         if (beatmapId <= 0L) return null
         return executeRosuCalculation(beatmapId) { reqId, osuBase64 ->
@@ -370,7 +393,8 @@ class RosuPpEngine @Inject constructor(
                 accuracyPercent = accuracyPercent,
                 nMisses = nMisses,
                 combo = combo,
-                clockRate = clockRate
+                clockRate = clockRate,
+                isLazer = isLazer
             )
         }
     }

@@ -1,6 +1,7 @@
 package com.osuchat.app.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -36,16 +37,19 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.FastForward
+import androidx.compose.material.icons.rounded.Gavel
+import androidx.compose.material.icons.rounded.Groups
+import androidx.compose.material.icons.rounded.Key
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.LockOpen
-import androidx.compose.material.icons.rounded.Map
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.PersonAdd
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.material.icons.rounded.RestartAlt
-import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material.icons.rounded.Tune
@@ -79,8 +83,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -116,6 +122,7 @@ import com.osuchat.app.ui.theme.TeamBlue
 import com.osuchat.app.ui.theme.TeamRed
 import com.osuchat.app.ui.theme.osuHairlineBorder
 import com.osuchat.app.ui.theme.tnum
+import com.osuchat.app.util.MappoolPickBanResolver
 import com.osuchat.app.util.MpLobbyParser
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
@@ -410,7 +417,8 @@ fun MpLobbyBoard(
                                 onClick = onOpenBeatmapSearch,
                                 shape = buttonShape,
                                 border = osuHairlineBorder(),
-                                contentPadding = compactBtnPadding
+                                contentPadding = PaddingValues(horizontal = OsuSpacing.md),
+                                modifier = Modifier.height(38.dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.Rounded.MusicNote,
@@ -418,7 +426,13 @@ fun MpLobbyBoard(
                                     modifier = Modifier.size(16.dp)
                                 )
                                 Spacer(modifier = Modifier.width(OsuSpacing.xs))
-                                Text("Pick map", style = MaterialTheme.typography.labelMedium)
+                                Text(
+                                    text = "Pick map",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis
+                                )
                             }
                         }
 
@@ -433,131 +447,131 @@ fun MpLobbyBoard(
                         )
                         Spacer(modifier = Modifier.height(OsuSpacing.xs))
 
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(OsuSpacing.sm),
-                            verticalArrangement = Arrangement.spacedBy(OsuSpacing.xs)
-                        ) {
-                            Button(
-                                onClick = { onSendCommand(MpLobbyParser.buildStartCommand(10)) },
-                                shape = buttonShape,
-                                contentPadding = compactBtnPadding
+                        Column(verticalArrangement = Arrangement.spacedBy(OsuSpacing.sm)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(OsuSpacing.sm)
                             ) {
-                                Icon(Icons.Rounded.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(OsuSpacing.xs))
-                                Text("Start 10s", style = MaterialTheme.typography.labelMedium.tnum())
-                            }
-                            OutlinedButton(
-                                onClick = { onSendCommand(MpLobbyParser.buildStartCommand()) },
-                                shape = buttonShape,
-                                border = osuHairlineBorder(),
-                                contentPadding = compactBtnPadding
-                            ) {
-                                Text("Force start", style = MaterialTheme.typography.labelMedium)
-                            }
-                            OutlinedButton(
-                                onClick = { onSendCommand(MpLobbyParser.buildAbortCommand()) },
-                                shape = buttonShape,
-                                border = osuHairlineBorder(),
-                                contentPadding = compactBtnPadding
-                            ) {
-                                Icon(Icons.Rounded.Stop, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(OsuSpacing.xs))
-                                Text("Abort", style = MaterialTheme.typography.labelMedium)
-                            }
-                            OutlinedButton(
-                                onClick = { onSendCommand(MpLobbyParser.buildLockCommand(!lobby.isLocked)) },
-                                shape = buttonShape,
-                                border = osuHairlineBorder(),
-                                contentPadding = compactBtnPadding
-                            ) {
-                                Icon(
-                                    imageVector = if (lobby.isLocked) Icons.Rounded.LockOpen else Icons.Rounded.Lock,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp)
+                                MpControlGridButton(
+                                    label = "Start 10s",
+                                    icon = Icons.Rounded.PlayArrow,
+                                    onClick = { onSendCommand(MpLobbyParser.buildStartCommand(10)) },
+                                    containerColor = MaterialTheme.colorScheme.primary,
+                                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                                    borderColor = null,
+                                    isNumeric = true,
+                                    modifier = Modifier.weight(1f)
                                 )
-                                Spacer(Modifier.width(OsuSpacing.xs))
-                                Text(if (lobby.isLocked) "Unlock" else "Lock", style = MaterialTheme.typography.labelMedium)
+                                MpControlGridButton(
+                                    label = "Force start",
+                                    icon = Icons.Rounded.FastForward,
+                                    onClick = { onSendCommand(MpLobbyParser.buildStartCommand()) },
+                                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    contentColor = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.weight(1f)
+                                )
                             }
-                            OutlinedButton(
-                                onClick = { onSendCommand(MpLobbyParser.buildCloseCommand()) },
-                                shape = buttonShape,
-                                border = osuHairlineBorder(MaterialTheme.colorScheme.error.copy(alpha = 0.6f)),
-                                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
-                                contentPadding = compactBtnPadding
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(OsuSpacing.sm)
                             ) {
-                                Icon(Icons.Rounded.Close, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(OsuSpacing.xs))
-                                Text("Close", style = MaterialTheme.typography.labelMedium)
+                                MpControlGridButton(
+                                    label = "Abort",
+                                    icon = Icons.Rounded.Stop,
+                                    onClick = { onSendCommand(MpLobbyParser.buildAbortCommand()) },
+                                    containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.45f),
+                                    contentColor = MaterialTheme.colorScheme.error,
+                                    borderColor = MaterialTheme.colorScheme.error.copy(alpha = 0.4f),
+                                    modifier = Modifier.weight(1f)
+                                )
+                                MpControlGridButton(
+                                    label = if (lobby.isLocked) "Unlock" else "Lock",
+                                    icon = if (lobby.isLocked) Icons.Rounded.LockOpen else Icons.Rounded.Lock,
+                                    onClick = { onSendCommand(MpLobbyParser.buildLockCommand(!lobby.isLocked)) },
+                                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    contentColor = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                MpControlGridButton(
+                                    label = "Close",
+                                    icon = Icons.Rounded.Close,
+                                    onClick = { onSendCommand(MpLobbyParser.buildCloseCommand()) },
+                                    containerColor = Color.Transparent,
+                                    contentColor = MaterialTheme.colorScheme.error,
+                                    borderColor = MaterialTheme.colorScheme.error.copy(alpha = 0.6f),
+                                    modifier = Modifier.weight(1f)
+                                )
                             }
                         }
 
+                        Spacer(modifier = Modifier.height(OsuSpacing.md))
+                        OsuHairlineDivider()
+                        Spacer(modifier = Modifier.height(OsuSpacing.sm))
+
+                        Text(
+                            text = "Room settings",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                         Spacer(modifier = Modifier.height(OsuSpacing.xs))
 
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(OsuSpacing.sm),
-                            verticalArrangement = Arrangement.spacedBy(OsuSpacing.xs)
-                        ) {
-                            OutlinedButton(
-                                onClick = { showMapDialog = true },
-                                shape = buttonShape,
-                                border = osuHairlineBorder(),
-                                contentPadding = compactBtnPadding
+                        Column(verticalArrangement = Arrangement.spacedBy(OsuSpacing.sm)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(OsuSpacing.xs)
                             ) {
-                                Icon(Icons.Rounded.Map, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(OsuSpacing.xs))
-                                Text("Map", style = MaterialTheme.typography.labelMedium)
+                                MpControlGridButton(
+                                    label = "Map",
+                                    icon = Icons.Rounded.MusicNote,
+                                    onClick = { showMapDialog = true },
+                                    horizontalPadding = OsuSpacing.xs,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                MpControlGridButton(
+                                    label = "Mods",
+                                    icon = Icons.Rounded.Tune,
+                                    onClick = { showModsDialog = true },
+                                    horizontalPadding = OsuSpacing.xs,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                MpControlGridButton(
+                                    label = "Invite",
+                                    icon = Icons.Rounded.PersonAdd,
+                                    onClick = { showInviteDialog = true },
+                                    horizontalPadding = OsuSpacing.xs,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                MpControlGridButton(
+                                    label = "Ref",
+                                    icon = Icons.Rounded.Shield,
+                                    onClick = { showRefDialog = true },
+                                    horizontalPadding = OsuSpacing.xs,
+                                    modifier = Modifier.weight(1f)
+                                )
                             }
-                            OutlinedButton(
-                                onClick = { showModsDialog = true },
-                                shape = buttonShape,
-                                border = osuHairlineBorder(),
-                                contentPadding = compactBtnPadding
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(OsuSpacing.sm)
                             ) {
-                                Text("Mods", style = MaterialTheme.typography.labelMedium)
-                            }
-                            OutlinedButton(
-                                onClick = { showInviteDialog = true },
-                                shape = buttonShape,
-                                border = osuHairlineBorder(),
-                                contentPadding = compactBtnPadding
-                            ) {
-                                Icon(Icons.Rounded.PersonAdd, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(OsuSpacing.xs))
-                                Text("Invite", style = MaterialTheme.typography.labelMedium)
-                            }
-                            OutlinedButton(
-                                onClick = { showRefDialog = true },
-                                shape = buttonShape,
-                                border = osuHairlineBorder(),
-                                contentPadding = compactBtnPadding
-                            ) {
-                                Text("Ref +/-", style = MaterialTheme.typography.labelMedium)
-                            }
-                            OutlinedButton(
-                                onClick = { showSizeDialog = true },
-                                shape = buttonShape,
-                                border = osuHairlineBorder(),
-                                contentPadding = compactBtnPadding
-                            ) {
-                                Text("Size (${lobby.roomSize})", style = MaterialTheme.typography.labelMedium.tnum())
-                            }
-                            OutlinedButton(
-                                onClick = { showSetModeDialog = true },
-                                shape = buttonShape,
-                                border = osuHairlineBorder(),
-                                contentPadding = compactBtnPadding
-                            ) {
-                                Icon(Icons.Rounded.Settings, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(OsuSpacing.xs))
-                                Text("Rules", style = MaterialTheme.typography.labelMedium)
-                            }
-                            OutlinedButton(
-                                onClick = { showPasswordDialog = true },
-                                shape = buttonShape,
-                                border = osuHairlineBorder(),
-                                contentPadding = compactBtnPadding
-                            ) {
-                                Text("Password", style = MaterialTheme.typography.labelMedium)
+                                MpControlGridButton(
+                                    label = "Size (${lobby.roomSize})",
+                                    icon = Icons.Rounded.Groups,
+                                    onClick = { showSizeDialog = true },
+                                    isNumeric = true,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                MpControlGridButton(
+                                    label = "Rules",
+                                    icon = Icons.Rounded.Gavel,
+                                    onClick = { showSetModeDialog = true },
+                                    modifier = Modifier.weight(1f)
+                                )
+                                MpControlGridButton(
+                                    label = "Password",
+                                    icon = Icons.Rounded.Key,
+                                    onClick = { showPasswordDialog = true },
+                                    modifier = Modifier.weight(1f)
+                                )
                             }
                         }
 
@@ -712,207 +726,251 @@ fun MpLobbyBoard(
                             if (activePool != null && activePool.slots.isNotEmpty()) {
                                 Spacer(modifier = Modifier.height(OsuSpacing.sm))
 
-                                LazyRow(
-                                    horizontalArrangement = Arrangement.spacedBy(OsuSpacing.sm),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    items(
-                                        items = MpPickBanMode.entries,
-                                        key = { it.name }
-                                    ) { mode ->
-                                        val selected = seriesState.pickBanMode == mode
-                                        val modeTint = when (mode) {
-                                            MpPickBanMode.RED_PICK, MpPickBanMode.RED_BAN -> TeamRed
-                                            MpPickBanMode.BLUE_PICK, MpPickBanMode.BLUE_BAN -> TeamBlue
-                                            MpPickBanMode.TB_NEUTRAL -> MaterialTheme.colorScheme.primary
-                                        }
-                                        Surface(
-                                            shape = chipShape,
-                                            color = if (selected) {
-                                                modeTint.copy(alpha = 0.16f)
-                                            } else {
-                                                MaterialTheme.colorScheme.surfaceContainerHigh
-                                            },
-                                            border = osuHairlineBorder(
-                                                if (selected) modeTint.copy(alpha = 0.45f) else MaterialTheme.colorScheme.outlineVariant
-                                            ),
-                                            tonalElevation = 0.dp,
-                                            shadowElevation = 0.dp,
-                                            modifier = Modifier
-                                                .clip(chipShape)
-                                                .clickable { onSetPickBanMode(mode) }
+                                val modeRows = listOf(
+                                    listOf(MpPickBanMode.RED_PICK, MpPickBanMode.BLUE_PICK),
+                                    listOf(MpPickBanMode.RED_BAN, MpPickBanMode.BLUE_BAN, MpPickBanMode.TB_NEUTRAL)
+                                )
+                                Column(verticalArrangement = Arrangement.spacedBy(OsuSpacing.xs)) {
+                                    modeRows.forEach { rowModes ->
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(OsuSpacing.xs)
                                         ) {
-                                            Text(
-                                                text = mode.label,
-                                                style = MaterialTheme.typography.labelSmall,
-                                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-                                                color = if (selected) modeTint else MaterialTheme.colorScheme.onSurfaceVariant,
-                                                maxLines = 1,
-                                                modifier = Modifier.padding(horizontal = OsuSpacing.sm, vertical = OsuSpacing.xs)
-                                            )
+                                            rowModes.forEach { mode ->
+                                                val selected = seriesState.pickBanMode == mode
+                                                val modeTint = when (mode) {
+                                                    MpPickBanMode.RED_PICK, MpPickBanMode.RED_BAN -> TeamRed
+                                                    MpPickBanMode.BLUE_PICK, MpPickBanMode.BLUE_BAN -> TeamBlue
+                                                    MpPickBanMode.TB_NEUTRAL -> MaterialTheme.colorScheme.primary
+                                                }
+                                                val modeBg by animateColorAsState(
+                                                    targetValue = if (selected) {
+                                                        modeTint.copy(alpha = 0.16f)
+                                                    } else {
+                                                        MaterialTheme.colorScheme.surfaceContainerHigh
+                                                    },
+                                                    animationSpec = OsuMotion.colorSpec(),
+                                                    label = "pickBanModeBg"
+                                                )
+                                                val modeBorder by animateColorAsState(
+                                                    targetValue = if (selected) {
+                                                        modeTint.copy(alpha = 0.45f)
+                                                    } else {
+                                                        MaterialTheme.colorScheme.outlineVariant
+                                                    },
+                                                    animationSpec = OsuMotion.colorSpec(),
+                                                    label = "pickBanModeBorder"
+                                                )
+                                                Surface(
+                                                    shape = chipShape,
+                                                    color = modeBg,
+                                                    border = osuHairlineBorder(modeBorder),
+                                                    tonalElevation = 0.dp,
+                                                    shadowElevation = 0.dp,
+                                                    modifier = Modifier
+                                                        .weight(1f)
+                                                        .height(36.dp)
+                                                        .clip(chipShape)
+                                                        .clickable(role = Role.Tab) { onSetPickBanMode(mode) }
+                                                ) {
+                                                    Box(
+                                                        modifier = Modifier.padding(horizontal = OsuSpacing.xs),
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Text(
+                                                            text = mode.label,
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                                                            color = if (selected) modeTint else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                            maxLines = 1,
+                                                            softWrap = false,
+                                                            overflow = TextOverflow.Ellipsis
+                                                        )
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 }
 
                                 Spacer(modifier = Modifier.height(OsuSpacing.sm))
 
-                                FlowRow(
-                                    horizontalArrangement = Arrangement.spacedBy(OsuSpacing.sm),
-                                    verticalArrangement = Arrangement.spacedBy(OsuSpacing.xs)
-                                ) {
-                                    activePool.slots.forEach { slot ->
-                                        key(slot.id, slot.slotTag, slot.orderIndex) {
-                                            val currentState = seriesState.slotStates[slot.id] ?: MpPoolSlotState.AVAILABLE
-                                            var showSlotMenu by remember(slot.id) { mutableStateOf(false) }
-                                            val isActivePick = seriesState.activePickedSlotId == slot.id
+                                Column(verticalArrangement = Arrangement.spacedBy(OsuSpacing.xs)) {
+                                    activePool.slots.chunked(4).forEach { rowSlots ->
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(OsuSpacing.xs)
+                                        ) {
+                                            rowSlots.forEach { slot ->
+                                                key(slot.id, slot.slotTag, slot.orderIndex) {
+                                                    val currentState = seriesState.slotStates[slot.id] ?: MpPoolSlotState.AVAILABLE
+                                                    var showSlotMenu by remember(slot.id) { mutableStateOf(false) }
+                                                    val isActivePick = seriesState.activePickedSlotId == slot.id
+                                                    val isBannedState = MappoolPickBanResolver.isBannedState(currentState)
+                                                    val isPickLocked = MappoolPickBanResolver.isSlotPickLocked(
+                                                        currentState = currentState,
+                                                        activeMode = seriesState.pickBanMode
+                                                    )
 
-                                            val chipContainerColor = when (currentState) {
-                                                MpPoolSlotState.AVAILABLE -> MaterialTheme.colorScheme.surfaceContainerHigh
-                                                MpPoolSlotState.PLAYED -> MaterialTheme.colorScheme.surfaceContainerLowest
-                                                MpPoolSlotState.PICKED_RED -> TeamRed.copy(alpha = 0.18f)
-                                                MpPoolSlotState.PICKED_BLUE -> TeamBlue.copy(alpha = 0.18f)
-                                                MpPoolSlotState.PLAYED_TB -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
-                                                MpPoolSlotState.BANNED -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f)
-                                                MpPoolSlotState.BANNED_RED -> TeamRed.copy(alpha = 0.12f)
-                                                MpPoolSlotState.BANNED_BLUE -> TeamBlue.copy(alpha = 0.12f)
-                                            }
-                                            val chipBorder = when {
-                                                isActivePick -> osuHairlineBorder(MaterialTheme.colorScheme.primary)
-                                                currentState == MpPoolSlotState.AVAILABLE -> osuHairlineBorder()
-                                                currentState == MpPoolSlotState.PLAYED -> osuHairlineBorder(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
-                                                currentState == MpPoolSlotState.PICKED_RED -> osuHairlineBorder(TeamRed.copy(alpha = 0.55f))
-                                                currentState == MpPoolSlotState.PICKED_BLUE -> osuHairlineBorder(TeamBlue.copy(alpha = 0.55f))
-                                                currentState == MpPoolSlotState.PLAYED_TB -> osuHairlineBorder(MaterialTheme.colorScheme.primary.copy(alpha = 0.55f))
-                                                currentState == MpPoolSlotState.BANNED -> osuHairlineBorder(MaterialTheme.colorScheme.error.copy(alpha = 0.55f))
-                                                currentState == MpPoolSlotState.BANNED_RED -> osuHairlineBorder(TeamRed.copy(alpha = 0.45f))
-                                                currentState == MpPoolSlotState.BANNED_BLUE -> osuHairlineBorder(TeamBlue.copy(alpha = 0.45f))
-                                                else -> osuHairlineBorder()
-                                            }
-                                            val isBannedState = currentState == MpPoolSlotState.BANNED ||
-                                                currentState == MpPoolSlotState.BANNED_RED ||
-                                                currentState == MpPoolSlotState.BANNED_BLUE
-                                            val chipAlpha = when (currentState) {
-                                                MpPoolSlotState.PLAYED -> 0.5f
-                                                MpPoolSlotState.BANNED,
-                                                MpPoolSlotState.BANNED_RED,
-                                                MpPoolSlotState.BANNED_BLUE -> 0.72f
-                                                else -> 1f
-                                            }
-                                            val labelColor = when (currentState) {
-                                                MpPoolSlotState.AVAILABLE -> MaterialTheme.colorScheme.onSurface
-                                                MpPoolSlotState.PLAYED -> MaterialTheme.colorScheme.onSurfaceVariant
-                                                MpPoolSlotState.PICKED_RED, MpPoolSlotState.BANNED_RED -> TeamRed
-                                                MpPoolSlotState.PICKED_BLUE, MpPoolSlotState.BANNED_BLUE -> TeamBlue
-                                                MpPoolSlotState.PLAYED_TB -> MaterialTheme.colorScheme.primary
-                                                MpPoolSlotState.BANNED -> MaterialTheme.colorScheme.error
-                                            }
-                                            val badgePrefix = when (currentState) {
-                                                MpPoolSlotState.PICKED_RED -> "R·"
-                                                MpPoolSlotState.PICKED_BLUE -> "B·"
-                                                MpPoolSlotState.BANNED_RED -> "RX·"
-                                                MpPoolSlotState.BANNED_BLUE -> "BX·"
-                                                MpPoolSlotState.PLAYED_TB -> "TB·"
-                                                else -> ""
-                                            }
+                                                    val chipContainerColor = when (currentState) {
+                                                        MpPoolSlotState.AVAILABLE -> MaterialTheme.colorScheme.surfaceContainerHigh
+                                                        MpPoolSlotState.PLAYED -> MaterialTheme.colorScheme.surfaceContainerLowest
+                                                        MpPoolSlotState.PICKED_RED -> TeamRed.copy(alpha = 0.18f)
+                                                        MpPoolSlotState.PICKED_BLUE -> TeamBlue.copy(alpha = 0.18f)
+                                                        MpPoolSlotState.PLAYED_TB -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+                                                        MpPoolSlotState.BANNED -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f)
+                                                        MpPoolSlotState.BANNED_RED -> TeamRed.copy(alpha = 0.12f)
+                                                        MpPoolSlotState.BANNED_BLUE -> TeamBlue.copy(alpha = 0.12f)
+                                                    }
+                                                    val chipBorder = when {
+                                                        isActivePick -> osuHairlineBorder(MaterialTheme.colorScheme.primary)
+                                                        currentState == MpPoolSlotState.AVAILABLE -> osuHairlineBorder()
+                                                        currentState == MpPoolSlotState.PLAYED -> osuHairlineBorder(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
+                                                        currentState == MpPoolSlotState.PICKED_RED -> osuHairlineBorder(TeamRed.copy(alpha = 0.55f))
+                                                        currentState == MpPoolSlotState.PICKED_BLUE -> osuHairlineBorder(TeamBlue.copy(alpha = 0.55f))
+                                                        currentState == MpPoolSlotState.PLAYED_TB -> osuHairlineBorder(MaterialTheme.colorScheme.primary.copy(alpha = 0.55f))
+                                                        currentState == MpPoolSlotState.BANNED -> osuHairlineBorder(MaterialTheme.colorScheme.error.copy(alpha = 0.55f))
+                                                        currentState == MpPoolSlotState.BANNED_RED -> osuHairlineBorder(TeamRed.copy(alpha = 0.45f))
+                                                        currentState == MpPoolSlotState.BANNED_BLUE -> osuHairlineBorder(TeamBlue.copy(alpha = 0.45f))
+                                                        else -> osuHairlineBorder()
+                                                    }
+                                                    val chipAlpha = when {
+                                                        isPickLocked -> 0.45f
+                                                        currentState == MpPoolSlotState.PLAYED -> 0.5f
+                                                        isBannedState -> 0.72f
+                                                        else -> 1f
+                                                    }
+                                                    val labelColor = when (currentState) {
+                                                        MpPoolSlotState.AVAILABLE -> MaterialTheme.colorScheme.onSurface
+                                                        MpPoolSlotState.PLAYED -> MaterialTheme.colorScheme.onSurfaceVariant
+                                                        MpPoolSlotState.PICKED_RED, MpPoolSlotState.BANNED_RED -> TeamRed
+                                                        MpPoolSlotState.PICKED_BLUE, MpPoolSlotState.BANNED_BLUE -> TeamBlue
+                                                        MpPoolSlotState.PLAYED_TB -> MaterialTheme.colorScheme.primary
+                                                        MpPoolSlotState.BANNED -> MaterialTheme.colorScheme.error
+                                                    }
+                                                    val badgePrefix = when (currentState) {
+                                                        MpPoolSlotState.PICKED_RED -> "R·"
+                                                        MpPoolSlotState.PICKED_BLUE -> "B·"
+                                                        MpPoolSlotState.BANNED_RED -> "RX·"
+                                                        MpPoolSlotState.BANNED_BLUE -> "BX·"
+                                                        MpPoolSlotState.PLAYED_TB -> "TB·"
+                                                        else -> ""
+                                                    }
 
-                                            Box {
-                                                Surface(
-                                                    shape = chipShape,
-                                                    color = chipContainerColor,
-                                                    border = chipBorder,
-                                                    tonalElevation = 0.dp,
-                                                    shadowElevation = 0.dp,
-                                                    modifier = Modifier
-                                                        .alpha(chipAlpha)
-                                                        .clip(chipShape)
-                                                        .combinedClickable(
-                                                            onClick = {
-                                                                lastSelectedPoolSlotId = slot.id
-                                                                val (nextState, sendMp) = when (seriesState.pickBanMode) {
-                                                                    MpPickBanMode.RED_PICK -> MpPoolSlotState.PICKED_RED to true
-                                                                    MpPickBanMode.BLUE_PICK -> MpPoolSlotState.PICKED_BLUE to true
-                                                                    MpPickBanMode.TB_NEUTRAL -> MpPoolSlotState.PLAYED_TB to true
-                                                                    MpPickBanMode.RED_BAN -> MpPoolSlotState.BANNED_RED to false
-                                                                    MpPickBanMode.BLUE_BAN -> MpPoolSlotState.BANNED_BLUE to false
-                                                                }
-                                                                onUpdatePoolSlotState(slot, nextState, sendMp)
-                                                                if (sendMp && onSelectMappoolSlot == null) {
-                                                                    MpLobbyParser.buildMapCommand(slot.beatmapId)?.let(onSendCommand)
-                                                                    val modsStr = slot.mods.trim().ifEmpty { "NF" }
-                                                                    onSendCommand("!mp mods $modsStr")
-                                                                }
-                                                            },
-                                                            onLongClick = { showSlotMenu = true }
-                                                        )
-                                                ) {
-                                                    Text(
-                                                        text = "$badgePrefix${slot.slotTag}",
-                                                        style = MaterialTheme.typography.labelMedium.tnum(),
-                                                        fontWeight = FontWeight.SemiBold,
-                                                        color = labelColor,
-                                                        textDecoration = if (isBannedState) {
-                                                            TextDecoration.LineThrough
-                                                        } else {
-                                                            TextDecoration.None
-                                                        },
-                                                        modifier = Modifier.padding(horizontal = OsuSpacing.md, vertical = OsuSpacing.xs)
-                                                    )
-                                                }
-
-                                                DropdownMenu(
-                                                    expanded = showSlotMenu,
-                                                    onDismissRequest = { showSlotMenu = false },
-                                                    shape = RoundedCornerShape(OsuRadius.md),
-                                                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                                    tonalElevation = 0.dp,
-                                                    shadowElevation = 0.dp,
-                                                    border = osuHairlineBorder()
-                                                ) {
-                                                    DropdownMenuItem(
-                                                        text = { Text("Red pick (${slot.mods.ifBlank { "NF" }})", color = TeamRed) },
-                                                        onClick = {
-                                                            showSlotMenu = false
-                                                            onUpdatePoolSlotState(slot, MpPoolSlotState.PICKED_RED, true)
-                                                        }
-                                                    )
-                                                    DropdownMenuItem(
-                                                        text = { Text("Blue pick (${slot.mods.ifBlank { "NF" }})", color = TeamBlue) },
-                                                        onClick = {
-                                                            showSlotMenu = false
-                                                            onUpdatePoolSlotState(slot, MpPoolSlotState.PICKED_BLUE, true)
-                                                        }
-                                                    )
-                                                    DropdownMenuItem(
-                                                        text = { Text("TB / Neutral pick (${slot.mods.ifBlank { "NF" }})") },
-                                                        onClick = {
-                                                            showSlotMenu = false
-                                                            onUpdatePoolSlotState(slot, MpPoolSlotState.PLAYED_TB, true)
-                                                        }
-                                                    )
-                                                    DropdownMenuItem(
-                                                        text = { Text("Red ban", color = TeamRed) },
-                                                        onClick = {
-                                                            showSlotMenu = false
-                                                            onUpdatePoolSlotState(slot, MpPoolSlotState.BANNED_RED, false)
-                                                        }
-                                                    )
-                                                    DropdownMenuItem(
-                                                        text = { Text("Blue ban", color = TeamBlue) },
-                                                        onClick = {
-                                                            showSlotMenu = false
-                                                            onUpdatePoolSlotState(slot, MpPoolSlotState.BANNED_BLUE, false)
-                                                        }
-                                                    )
-                                                    if (currentState != MpPoolSlotState.AVAILABLE) {
-                                                        DropdownMenuItem(
-                                                            text = { Text("Reset to available") },
-                                                            onClick = {
-                                                                showSlotMenu = false
-                                                                onUpdatePoolSlotState(slot, MpPoolSlotState.AVAILABLE, false)
+                                                    Box(modifier = Modifier.weight(1f)) {
+                                                        Surface(
+                                                            shape = chipShape,
+                                                            color = chipContainerColor,
+                                                            border = chipBorder,
+                                                            tonalElevation = 0.dp,
+                                                            shadowElevation = 0.dp,
+                                                            modifier = Modifier
+                                                                .fillMaxWidth()
+                                                                .height(36.dp)
+                                                                .alpha(chipAlpha)
+                                                                .clip(chipShape)
+                                                                .combinedClickable(
+                                                                    enabled = !isPickLocked,
+                                                                    onClick = {
+                                                                        val outcome = MappoolPickBanResolver.resolveTap(
+                                                                            currentState = currentState,
+                                                                            activeMode = seriesState.pickBanMode
+                                                                        ) ?: return@combinedClickable
+                                                                        lastSelectedPoolSlotId = if (outcome.nextState == MpPoolSlotState.AVAILABLE) {
+                                                                            null
+                                                                        } else {
+                                                                            slot.id
+                                                                        }
+                                                                        onUpdatePoolSlotState(slot, outcome.nextState, outcome.shouldEmitMpCommands)
+                                                                        if (outcome.shouldEmitMpCommands && onSelectMappoolSlot == null) {
+                                                                            MpLobbyParser.buildMapCommand(slot.beatmapId)?.let(onSendCommand)
+                                                                            val modsStr = slot.mods.trim().ifEmpty { "NF" }
+                                                                            onSendCommand("!mp mods $modsStr")
+                                                                        }
+                                                                    },
+                                                                    onLongClick = { showSlotMenu = true }
+                                                                )
+                                                        ) {
+                                                            Box(
+                                                                modifier = Modifier.padding(horizontal = OsuSpacing.xs),
+                                                                contentAlignment = Alignment.Center
+                                                            ) {
+                                                                Text(
+                                                                    text = "$badgePrefix${slot.slotTag}",
+                                                                    style = MaterialTheme.typography.labelMedium.tnum(),
+                                                                    fontWeight = FontWeight.SemiBold,
+                                                                    color = labelColor,
+                                                                    maxLines = 1,
+                                                                    softWrap = false,
+                                                                    overflow = TextOverflow.Ellipsis,
+                                                                    textDecoration = if (isBannedState) {
+                                                                        TextDecoration.LineThrough
+                                                                    } else {
+                                                                        TextDecoration.None
+                                                                    }
+                                                                )
                                                             }
-                                                        )
+                                                        }
+
+                                                        DropdownMenu(
+                                                            expanded = showSlotMenu,
+                                                            onDismissRequest = { showSlotMenu = false },
+                                                            shape = RoundedCornerShape(OsuRadius.md),
+                                                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                                            tonalElevation = 0.dp,
+                                                            shadowElevation = 0.dp,
+                                                            border = osuHairlineBorder()
+                                                        ) {
+                                                            DropdownMenuItem(
+                                                                text = { Text("Red pick (${slot.mods.ifBlank { "NF" }})", color = TeamRed) },
+                                                                onClick = {
+                                                                    showSlotMenu = false
+                                                                    onUpdatePoolSlotState(slot, MpPoolSlotState.PICKED_RED, true)
+                                                                }
+                                                            )
+                                                            DropdownMenuItem(
+                                                                text = { Text("Blue pick (${slot.mods.ifBlank { "NF" }})", color = TeamBlue) },
+                                                                onClick = {
+                                                                    showSlotMenu = false
+                                                                    onUpdatePoolSlotState(slot, MpPoolSlotState.PICKED_BLUE, true)
+                                                                }
+                                                            )
+                                                            DropdownMenuItem(
+                                                                text = { Text("TB / Neutral pick (${slot.mods.ifBlank { "NF" }})") },
+                                                                onClick = {
+                                                                    showSlotMenu = false
+                                                                    onUpdatePoolSlotState(slot, MpPoolSlotState.PLAYED_TB, true)
+                                                                }
+                                                            )
+                                                            DropdownMenuItem(
+                                                                text = { Text("Red ban", color = TeamRed) },
+                                                                onClick = {
+                                                                    showSlotMenu = false
+                                                                    onUpdatePoolSlotState(slot, MpPoolSlotState.BANNED_RED, false)
+                                                                }
+                                                            )
+                                                            DropdownMenuItem(
+                                                                text = { Text("Blue ban", color = TeamBlue) },
+                                                                onClick = {
+                                                                    showSlotMenu = false
+                                                                    onUpdatePoolSlotState(slot, MpPoolSlotState.BANNED_BLUE, false)
+                                                                }
+                                                            )
+                                                            if (currentState != MpPoolSlotState.AVAILABLE) {
+                                                                DropdownMenuItem(
+                                                                    text = { Text("Reset to available") },
+                                                                    onClick = {
+                                                                        showSlotMenu = false
+                                                                        onUpdatePoolSlotState(slot, MpPoolSlotState.AVAILABLE, false)
+                                                                    }
+                                                                )
+                                                            }
+                                                        }
                                                     }
                                                 }
+                                            }
+                                            repeat(4 - rowSlots.size) {
+                                                Spacer(modifier = Modifier.weight(1f))
                                             }
                                         }
                                     }
@@ -2127,6 +2185,59 @@ fun MpLobbyBoard(
 }
 
 @Composable
+private fun MpControlGridButton(
+    label: String,
+    icon: ImageVector,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    containerColor: Color = MaterialTheme.colorScheme.surfaceContainerHigh,
+    contentColor: Color = MaterialTheme.colorScheme.onSurface,
+    borderColor: Color? = MaterialTheme.colorScheme.outlineVariant,
+    horizontalPadding: androidx.compose.ui.unit.Dp = OsuSpacing.sm,
+    isNumeric: Boolean = false
+) {
+    val shape = RoundedCornerShape(OsuRadius.md)
+    val baseStyle = MaterialTheme.typography.labelMedium
+    val textStyle = if (isNumeric) baseStyle.tnum() else baseStyle
+    Surface(
+        shape = shape,
+        color = containerColor,
+        border = borderColor?.let { osuHairlineBorder(it) },
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp,
+        modifier = modifier
+            .height(42.dp)
+            .clip(shape)
+            .clickable(onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = horizontalPadding),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = contentColor,
+                modifier = Modifier.size(16.dp)
+            )
+            Spacer(modifier = Modifier.width(OsuSpacing.xs))
+            Text(
+                text = label,
+                style = textStyle,
+                fontWeight = FontWeight.Medium,
+                color = contentColor,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
 private fun SeriesScoreboardHeaderCard(
     lobby: MpLobbyState,
     seriesState: MatchSeriesState,
@@ -2146,6 +2257,7 @@ private fun SeriesScoreboardHeaderCard(
     val surfaces = LocalOsuSurfaces.current
     val cardShape = RoundedCornerShape(OsuRadius.lg)
     val chipShape = RoundedCornerShape(OsuRadius.md)
+    val stepperShape = RoundedCornerShape(OsuRadius.sm)
     Surface(
         shape = cardShape,
         color = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -2158,20 +2270,23 @@ private fun SeriesScoreboardHeaderCard(
             modifier = Modifier.padding(OsuSpacing.md),
             verticalArrangement = Arrangement.spacedBy(OsuSpacing.sm)
         ) {
-            Row(
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalArrangement = Arrangement.spacedBy(OsuSpacing.sm)
             ) {
-                Column(modifier = Modifier.weight(1f)) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(OsuSpacing.xxs)
+                ) {
                     Text(
                         text = lobby.roomName,
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
                     Row(
+                        modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(OsuSpacing.xs)
                     ) {
@@ -2184,7 +2299,7 @@ private fun SeriesScoreboardHeaderCard(
                         )
                         Text(
                             text = buildString {
-                                append("${lobby.teamMode} · ${lobby.winCondition} · ${lobby.activeMods}")
+                                append("· ${lobby.teamMode} · ${lobby.winCondition} · ${lobby.activeMods}")
                                 if (lobby.isLocked) append(" · Locked")
                                 if (lobby.isClosed) append(" · Closed")
                             },
@@ -2192,91 +2307,125 @@ private fun SeriesScoreboardHeaderCard(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f, fill = false)
+                            modifier = Modifier.weight(1f)
                         )
                     }
                 }
-                Spacer(Modifier.width(OsuSpacing.xs))
-                Box {
-                    Surface(
-                        shape = RoundedCornerShape(OsuRadius.md),
-                        color = surfaces.accentSubtle,
-                        border = osuHairlineBorder(MaterialTheme.colorScheme.primary.copy(alpha = 0.28f)),
-                        tonalElevation = 0.dp,
-                        shadowElevation = 0.dp,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(OsuRadius.md))
-                            .clickable { onToggleBestOfDropdown(true) }
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = OsuSpacing.sm, vertical = OsuSpacing.xs),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "Bo${seriesState.bestOf} (FT${seriesState.firstTo})",
-                                style = MaterialTheme.typography.labelSmall.tnum(),
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            Icon(
-                                imageVector = Icons.Rounded.ArrowDropDown,
-                                contentDescription = "Select Best-of",
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-                    }
-                    DropdownMenu(
-                        expanded = showBestOfDropdown,
-                        onDismissRequest = { onToggleBestOfDropdown(false) },
-                        shape = RoundedCornerShape(OsuRadius.md),
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        tonalElevation = 0.dp,
-                        shadowElevation = 0.dp,
-                        border = osuHairlineBorder()
-                    ) {
-                        MatchSeriesState.BEST_OF_PRESETS.forEach { preset ->
-                            DropdownMenuItem(
-                                text = {
-                                    Text(
-                                        text = "Bo$preset (First to ${(preset / 2) + 1})",
-                                        style = MaterialTheme.typography.bodySmall.tnum(),
-                                        fontWeight = if (preset == seriesState.bestOf) {
-                                            FontWeight.SemiBold
-                                        } else {
-                                            FontWeight.Normal
-                                        }
-                                    )
-                                },
-                                onClick = { onSelectBestOf(preset) }
-                            )
-                        }
-                    }
-                }
-                val activeMatchId = lobby.matchId
-                if (activeMatchId != null && onOpenMatchAnalyzer != null) {
-                    IconButton(
-                        onClick = { onOpenMatchAnalyzer(activeMatchId) },
-                        modifier = Modifier.size(32.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Analytics,
-                            contentDescription = "Analyze match",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-                }
-                IconButton(
-                    onClick = onRefreshSettings,
-                    modifier = Modifier.size(32.dp)
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Refresh,
-                        contentDescription = "Refresh lobby settings",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(16.dp)
-                    )
+                    Box {
+                        Surface(
+                            shape = chipShape,
+                            color = surfaces.accentSubtle,
+                            border = osuHairlineBorder(MaterialTheme.colorScheme.primary.copy(alpha = 0.28f)),
+                            tonalElevation = 0.dp,
+                            shadowElevation = 0.dp,
+                            modifier = Modifier
+                                .height(34.dp)
+                                .clip(chipShape)
+                                .clickable { onToggleBestOfDropdown(true) }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = OsuSpacing.sm),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(OsuSpacing.xxs)
+                            ) {
+                                Text(
+                                    text = "Bo${seriesState.bestOf} (FT${seriesState.firstTo})",
+                                    style = MaterialTheme.typography.labelMedium.tnum(),
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                                Icon(
+                                    imageVector = Icons.Rounded.ArrowDropDown,
+                                    contentDescription = "Select Best-of",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                        DropdownMenu(
+                            expanded = showBestOfDropdown,
+                            onDismissRequest = { onToggleBestOfDropdown(false) },
+                            shape = chipShape,
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            tonalElevation = 0.dp,
+                            shadowElevation = 0.dp,
+                            border = osuHairlineBorder()
+                        ) {
+                            MatchSeriesState.BEST_OF_PRESETS.forEach { preset ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            text = "Bo$preset (First to ${(preset / 2) + 1})",
+                                            style = MaterialTheme.typography.bodySmall.tnum(),
+                                            fontWeight = if (preset == seriesState.bestOf) {
+                                                FontWeight.SemiBold
+                                            } else {
+                                                FontWeight.Normal
+                                            }
+                                        )
+                                    },
+                                    onClick = { onSelectBestOf(preset) }
+                                )
+                            }
+                        }
+                    }
+
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(OsuSpacing.xs),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val activeMatchId = lobby.matchId
+                        if (activeMatchId != null && onOpenMatchAnalyzer != null) {
+                            Surface(
+                                shape = chipShape,
+                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                border = osuHairlineBorder(),
+                                tonalElevation = 0.dp,
+                                shadowElevation = 0.dp,
+                                modifier = Modifier
+                                    .size(34.dp)
+                                    .clip(chipShape)
+                                    .clickable { onOpenMatchAnalyzer(activeMatchId) }
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Analytics,
+                                        contentDescription = "Analyze match",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+                        }
+                        Surface(
+                            shape = chipShape,
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            border = osuHairlineBorder(),
+                            tonalElevation = 0.dp,
+                            shadowElevation = 0.dp,
+                            modifier = Modifier
+                                .size(34.dp)
+                                .clip(chipShape)
+                                .clickable(onClick = onRefreshSettings)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Refresh,
+                                    contentDescription = "Refresh lobby settings",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                    }
                 }
             }
 
@@ -2285,7 +2434,7 @@ private fun SeriesScoreboardHeaderCard(
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(OsuSpacing.xs)
+                horizontalArrangement = Arrangement.spacedBy(OsuSpacing.sm)
             ) {
                 Column(
                     modifier = Modifier
@@ -2293,7 +2442,8 @@ private fun SeriesScoreboardHeaderCard(
                         .clip(chipShape)
                         .clickable(onClick = onOpenEditTeams)
                         .padding(vertical = OsuSpacing.xxs),
-                    horizontalAlignment = Alignment.Start
+                    horizontalAlignment = Alignment.Start,
+                    verticalArrangement = Arrangement.spacedBy(OsuSpacing.xs)
                 ) {
                     Text(
                         text = seriesState.redTeamName,
@@ -2304,34 +2454,63 @@ private fun SeriesScoreboardHeaderCard(
                         overflow = TextOverflow.Ellipsis
                     )
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(OsuSpacing.xxs),
+                        horizontalArrangement = Arrangement.spacedBy(OsuSpacing.xs),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        IconButton(
-                            onClick = { onAdjustScore(MpTeam.RED, -1) },
-                            enabled = seriesState.redScore > 0,
-                            modifier = Modifier.size(28.dp)
+                        val canDecrementRed = seriesState.redScore > 0
+                        Surface(
+                            shape = stepperShape,
+                            color = TeamRed.copy(alpha = 0.14f),
+                            border = osuHairlineBorder(TeamRed.copy(alpha = 0.35f)),
+                            tonalElevation = 0.dp,
+                            shadowElevation = 0.dp,
+                            modifier = Modifier
+                                .size(32.dp)
+                                .alpha(if (canDecrementRed) 1f else 0.38f)
+                                .clip(stepperShape)
+                                .clickable(enabled = canDecrementRed) { onAdjustScore(MpTeam.RED, -1) }
                         ) {
-                            Icon(Icons.Rounded.Remove, contentDescription = "Red -1", modifier = Modifier.size(14.dp))
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Remove,
+                                    contentDescription = "Red -1",
+                                    tint = TeamRed,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
                         }
-                        IconButton(
-                            onClick = { onAdjustScore(MpTeam.RED, 1) },
-                            modifier = Modifier.size(28.dp)
+                        Surface(
+                            shape = stepperShape,
+                            color = TeamRed.copy(alpha = 0.14f),
+                            border = osuHairlineBorder(TeamRed.copy(alpha = 0.35f)),
+                            tonalElevation = 0.dp,
+                            shadowElevation = 0.dp,
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(stepperShape)
+                                .clickable { onAdjustScore(MpTeam.RED, 1) }
                         ) {
-                            Icon(Icons.Rounded.Add, contentDescription = "Red +1", tint = TeamRed, modifier = Modifier.size(14.dp))
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Add,
+                                    contentDescription = "Red +1",
+                                    tint = TeamRed,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
                         }
                     }
                 }
 
                 Surface(
-                    shape = RoundedCornerShape(OsuRadius.md),
+                    shape = chipShape,
                     color = MaterialTheme.colorScheme.surfaceContainerHigh,
                     border = osuHairlineBorder(),
                     tonalElevation = 0.dp,
                     shadowElevation = 0.dp
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = OsuSpacing.md, vertical = OsuSpacing.xs),
+                        modifier = Modifier.padding(horizontal = OsuSpacing.md, vertical = OsuSpacing.sm),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(OsuSpacing.xs)
                     ) {
@@ -2361,7 +2540,8 @@ private fun SeriesScoreboardHeaderCard(
                         .clip(chipShape)
                         .clickable(onClick = onOpenEditTeams)
                         .padding(vertical = OsuSpacing.xxs),
-                    horizontalAlignment = Alignment.End
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.spacedBy(OsuSpacing.xs)
                 ) {
                     Text(
                         text = seriesState.blueTeamName,
@@ -2373,21 +2553,50 @@ private fun SeriesScoreboardHeaderCard(
                         textAlign = TextAlign.End
                     )
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(OsuSpacing.xxs),
+                        horizontalArrangement = Arrangement.spacedBy(OsuSpacing.xs),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        IconButton(
-                            onClick = { onAdjustScore(MpTeam.BLUE, -1) },
-                            enabled = seriesState.blueScore > 0,
-                            modifier = Modifier.size(28.dp)
+                        val canDecrementBlue = seriesState.blueScore > 0
+                        Surface(
+                            shape = stepperShape,
+                            color = TeamBlue.copy(alpha = 0.14f),
+                            border = osuHairlineBorder(TeamBlue.copy(alpha = 0.35f)),
+                            tonalElevation = 0.dp,
+                            shadowElevation = 0.dp,
+                            modifier = Modifier
+                                .size(32.dp)
+                                .alpha(if (canDecrementBlue) 1f else 0.38f)
+                                .clip(stepperShape)
+                                .clickable(enabled = canDecrementBlue) { onAdjustScore(MpTeam.BLUE, -1) }
                         ) {
-                            Icon(Icons.Rounded.Remove, contentDescription = "Blue -1", modifier = Modifier.size(14.dp))
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Remove,
+                                    contentDescription = "Blue -1",
+                                    tint = TeamBlue,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
                         }
-                        IconButton(
-                            onClick = { onAdjustScore(MpTeam.BLUE, 1) },
-                            modifier = Modifier.size(28.dp)
+                        Surface(
+                            shape = stepperShape,
+                            color = TeamBlue.copy(alpha = 0.14f),
+                            border = osuHairlineBorder(TeamBlue.copy(alpha = 0.35f)),
+                            tonalElevation = 0.dp,
+                            shadowElevation = 0.dp,
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(stepperShape)
+                                .clickable { onAdjustScore(MpTeam.BLUE, 1) }
                         ) {
-                            Icon(Icons.Rounded.Add, contentDescription = "Blue +1", tint = TeamBlue, modifier = Modifier.size(14.dp))
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Add,
+                                    contentDescription = "Blue +1",
+                                    tint = TeamBlue,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -2404,53 +2613,112 @@ private fun SeriesScoreboardHeaderCard(
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(OsuSpacing.sm),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (statusBadge != null) {
-                    OsuMicroTag(
-                        text = statusBadge.first,
-                        containerColor = statusBadge.second.copy(alpha = 0.14f),
-                        contentColor = statusBadge.second,
-                        isNumeric = true
-                    )
-                } else {
-                    Text(
-                        text = "Tap team name to edit",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.clickable(onClick = onOpenEditTeams)
-                    )
+                Box(modifier = Modifier.weight(1f)) {
+                    if (statusBadge != null) {
+                        OsuMicroTag(
+                            text = statusBadge.first,
+                            containerColor = statusBadge.second.copy(alpha = 0.14f),
+                            contentColor = statusBadge.second,
+                            isNumeric = true
+                        )
+                    } else {
+                        Text(
+                            text = "Tap team name to edit",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.clickable(onClick = onOpenEditTeams)
+                        )
+                    }
                 }
+
+                val canUndo = seriesState.rounds.isNotEmpty()
+                val canReset = seriesState.redScore > 0 ||
+                    seriesState.blueScore > 0 ||
+                    seriesState.rounds.isNotEmpty() ||
+                    seriesState.slotStates.isNotEmpty()
 
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(OsuSpacing.xs),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(
-                        onClick = onUndoLastRound,
-                        enabled = seriesState.rounds.isNotEmpty(),
-                        modifier = Modifier.size(28.dp)
-                    ) {
-                        Icon(Icons.AutoMirrored.Rounded.Undo, contentDescription = "Undo last round", modifier = Modifier.size(16.dp))
-                    }
-                    IconButton(
-                        onClick = onResetSeries,
-                        enabled = seriesState.redScore > 0 || seriesState.blueScore > 0 || seriesState.rounds.isNotEmpty() || seriesState.slotStates.isNotEmpty(),
-                        modifier = Modifier.size(28.dp)
-                    ) {
-                        Icon(Icons.Rounded.RestartAlt, contentDescription = "Reset series", modifier = Modifier.size(16.dp))
-                    }
-                    OutlinedButton(
-                        onClick = onCopySummary,
+                    Surface(
                         shape = chipShape,
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
                         border = osuHairlineBorder(),
-                        contentPadding = PaddingValues(horizontal = OsuSpacing.sm, vertical = OsuSpacing.xxs),
-                        modifier = Modifier.height(28.dp)
+                        tonalElevation = 0.dp,
+                        shadowElevation = 0.dp,
+                        modifier = Modifier
+                            .size(34.dp)
+                            .alpha(if (canUndo) 1f else 0.38f)
+                            .clip(chipShape)
+                            .clickable(enabled = canUndo, onClick = onUndoLastRound)
                     ) {
-                        Icon(Icons.Rounded.ContentCopy, contentDescription = null, modifier = Modifier.size(13.dp))
-                        Spacer(Modifier.width(OsuSpacing.xs))
-                        Text("Copy summary", style = MaterialTheme.typography.labelSmall)
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Rounded.Undo,
+                                contentDescription = "Undo last round",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                    Surface(
+                        shape = chipShape,
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        border = osuHairlineBorder(),
+                        tonalElevation = 0.dp,
+                        shadowElevation = 0.dp,
+                        modifier = Modifier
+                            .size(34.dp)
+                            .alpha(if (canReset) 1f else 0.38f)
+                            .clip(chipShape)
+                            .clickable(enabled = canReset, onClick = onResetSeries)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Rounded.RestartAlt,
+                                contentDescription = "Reset series",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                    Surface(
+                        shape = chipShape,
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        border = osuHairlineBorder(),
+                        tonalElevation = 0.dp,
+                        shadowElevation = 0.dp,
+                        modifier = Modifier
+                            .height(34.dp)
+                            .clip(chipShape)
+                            .clickable(onClick = onCopySummary)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = OsuSpacing.sm),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(OsuSpacing.xs)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.ContentCopy,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Text(
+                                text = "Copy summary",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                 }
             }
@@ -2460,16 +2728,69 @@ private fun SeriesScoreboardHeaderCard(
                 horizontalArrangement = Arrangement.spacedBy(OsuSpacing.sm),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                OsuFilterChip(
-                    label = "Auto-score TeamVs",
-                    selected = seriesState.autoScoreTeamVs,
-                    onClick = { onToggleAutoScore(!seriesState.autoScoreTeamVs) }
-                )
-                OsuFilterChip(
-                    label = "Warmup",
-                    selected = seriesState.isWarmupActive,
-                    onClick = { onToggleWarmup(!seriesState.isWarmupActive) }
-                )
+                listOf(
+                    Triple("Auto-score TeamVs", seriesState.autoScoreTeamVs) {
+                        onToggleAutoScore(!seriesState.autoScoreTeamVs)
+                    },
+                    Triple("Warmup", seriesState.isWarmupActive) {
+                        onToggleWarmup(!seriesState.isWarmupActive)
+                    }
+                ).forEach { (label, selected, onToggle) ->
+                    val toggleBg by animateColorAsState(
+                        targetValue = if (selected) {
+                            surfaces.accentSubtle
+                        } else {
+                            MaterialTheme.colorScheme.surfaceContainerHigh
+                        },
+                        animationSpec = OsuMotion.colorSpec(),
+                        label = "seriesToggleBg"
+                    )
+                    val toggleFg by animateColorAsState(
+                        targetValue = if (selected) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        animationSpec = OsuMotion.colorSpec(),
+                        label = "seriesToggleFg"
+                    )
+                    val toggleBorder by animateColorAsState(
+                        targetValue = if (selected) {
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.28f)
+                        } else {
+                            MaterialTheme.colorScheme.outlineVariant
+                        },
+                        animationSpec = OsuMotion.colorSpec(),
+                        label = "seriesToggleBorder"
+                    )
+                    Surface(
+                        shape = chipShape,
+                        color = toggleBg,
+                        border = osuHairlineBorder(toggleBorder),
+                        tonalElevation = 0.dp,
+                        shadowElevation = 0.dp,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(40.dp)
+                            .clip(chipShape)
+                            .clickable(role = Role.Switch, onClick = onToggle)
+                    ) {
+                        Box(
+                            modifier = Modifier.padding(horizontal = OsuSpacing.sm),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = label,
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                                color = toggleFg,
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
             }
         }
     }

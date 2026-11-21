@@ -116,7 +116,7 @@ class ScoreCardRenderer @Inject constructor(
                 val values = ContentValues().apply {
                     put(MediaStore.Images.Media.DISPLAY_NAME, cleanName)
                     put(MediaStore.Images.Media.MIME_TYPE, "image/png")
-                    put(MediaStore.Images.Media.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/osu-chat")
+                    put(MediaStore.Images.Media.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/OsuCompanion")
                     put(MediaStore.Images.Media.IS_PENDING, 1)
                 }
                 val resolver = context.contentResolver
@@ -132,7 +132,7 @@ class ScoreCardRenderer @Inject constructor(
             } else {
                 val picturesDir = File(
                     context.getExternalFilesDir(Environment.DIRECTORY_PICTURES),
-                    "osu-chat"
+                    "OsuCompanion"
                 ).apply { mkdirs() }
                 val destFile = File(picturesDir, cleanName)
                 file.copyTo(destFile, overwrite = true)
@@ -167,7 +167,8 @@ class ScoreCardRenderer @Inject constructor(
                 mods = modSet,
                 accuracyPercent = fcAcc,
                 nMisses = 0,
-                combo = mapMaxCombo
+                combo = mapMaxCombo,
+                isLazer = score.isLazer
             )
         }.getOrNull() ?: return null
         val fcPp = calc.pp.takeIf { it.isFinite() && it > 0.0 } ?: return null
@@ -424,8 +425,13 @@ class ScoreCardRenderer @Inject constructor(
         val clippedDiff = TextUtils.ellipsize(diffLine, diffPaint, maxTextW, TextUtils.TruncateAt.END).toString()
         canvas.drawText(clippedDiff, 52f, 282f, diffPaint)
 
-        // Mod Pills
-        val mods = score.mods.map { it.trim().uppercase() }.filter { it.isNotEmpty() && it != "NM" }
+        // Client Badge + Mod Pills (avoids duplicate CL / NM+CL clutter)
+        val gameplayMods = score.gameplayMods
+        val clientPill = score.clientBadgeLabel.uppercase(Locale.US)
+        val displayPills = buildList {
+            add(clientPill to true)
+            gameplayMods.forEach { add(it to false) }
+        }
         var modX = 52f
         val modTop = 304f
         val modHeight = 36f
@@ -434,16 +440,24 @@ class ScoreCardRenderer @Inject constructor(
             textSize = 18f
             typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
         }
-        val displayMods = if (mods.isEmpty()) listOf("NM") else mods
-        for (mod in displayMods.take(7)) {
+        for ((mod, isClientBadge) in displayPills.take(8)) {
             val mw = modPaint.measureText(mod) + 24f
             if (modX + mw > gradeBox.left - 24f) break
             val mRect = RectF(modX, modTop, modX + mw, modTop + modHeight)
-            paint.color = if (mod == "NM") Color.parseColor("#24242E") else Color.parseColor("#33FF66AA")
+            val isNeutralClassic = isClientBadge && !score.isLazer
+            paint.color = when {
+                isNeutralClassic -> Color.parseColor("#24242E")
+                isClientBadge -> Color.parseColor("#2E1D2E")
+                else -> Color.parseColor("#33FF66AA")
+            }
             canvas.drawRoundRect(mRect, 10f, 10f, paint)
             paint.style = Paint.Style.STROKE
             paint.strokeWidth = 1.5f
-            paint.color = if (mod == "NM") Color.parseColor("#3E3E4E") else Color.parseColor("#AAFF66AA")
+            paint.color = when {
+                isNeutralClassic -> Color.parseColor("#4A4A5E")
+                isClientBadge -> Color.parseColor("#CCFF66AA")
+                else -> Color.parseColor("#AAFF66AA")
+            }
             canvas.drawRoundRect(mRect, 10f, 10f, paint)
             paint.style = Paint.Style.FILL
             val my = mRect.centerY() - ((modPaint.descent() + modPaint.ascent()) / 2f)
@@ -538,7 +552,7 @@ class ScoreCardRenderer @Inject constructor(
         }
         paint.color = Color.parseColor("#FF66AA")
         canvas.drawCircle(56f, h - 42f, 5f, paint)
-        canvas.drawText("osu! Companion", 72f, h - 36f, footerPaint)
+        canvas.drawText("OsuCompanion", 72f, h - 36f, footerPaint)
 
         val linkText = score.beatmapId?.takeIf { it > 0L }?.let { "osu.ppy.sh/b/$it" }
             ?: score.beatmapsetId?.takeIf { it > 0L }?.let { "osu.ppy.sh/s/$it" }

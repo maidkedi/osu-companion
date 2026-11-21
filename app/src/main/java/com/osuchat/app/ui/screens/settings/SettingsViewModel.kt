@@ -308,6 +308,24 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun setTrackedAlertsEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            chatRepository.setTrackedAlertsEnabled(enabled)
+        }
+    }
+
+    fun setDefaultTrackedTopPlayLimit(limit: Int) {
+        viewModelScope.launch {
+            chatRepository.setDefaultTrackedTopPlayLimit(limit)
+        }
+    }
+
+    fun setTrackedAlertsIntervalMinutes(minutes: Int) {
+        viewModelScope.launch {
+            chatRepository.setTrackedAlertsIntervalMinutes(minutes)
+        }
+    }
+
     fun addIgnoredUser(rawUsername: String): String? {
         val clean = rawUsername.trim()
         if (clean.isEmpty()) return "Enter a username"

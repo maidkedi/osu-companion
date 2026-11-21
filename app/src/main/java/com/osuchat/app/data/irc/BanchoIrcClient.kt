@@ -176,7 +176,7 @@ class BanchoIrcClient @Inject constructor() {
     @Volatile
     private var currentPassword: String = ""
 
-    private val pendingChannels = linkedSetOf("#turkish", "#osu", "#lobby", "#announce")
+    private val pendingChannels = linkedSetOf("#osu", "#lobby", "#announce")
     private val joinedInCurrentSocket = linkedSetOf<String>()
 
     private val _status = MutableStateFlow(ConnectionStatus.OFFLINE)
@@ -194,10 +194,11 @@ class BanchoIrcClient @Inject constructor() {
     suspend fun connectAndVerify(
         username: String,
         password: String,
-        initialChannels: List<String> = listOf("#turkish", "#osu", "#lobby", "#announce")
+        initialChannels: List<String> = listOf("#osu", "#lobby", "#announce")
     ): Result<Unit> = withContext(Dispatchers.IO) {
-        val cleanNick = username.trim().replace(' ', '_')
-        if (cleanNick.isBlank() || password.isBlank()) {
+        val cleanNick = sanitizeIrcNick(username)
+        val cleanPass = sanitizeIrcPassword(password)
+        if (cleanNick.isBlank() || cleanPass.isBlank()) {
             return@withContext Result.failure(IllegalArgumentException("IRC username and password are required"))
         }
 
@@ -206,7 +207,7 @@ class BanchoIrcClient @Inject constructor() {
         val authDeferred = CompletableDeferred<Result<Unit>>()
         val myToken = startConnectionLoop(
             nick = cleanNick,
-            password = password,
+            password = cleanPass,
             initialChannels = initialChannels,
             authDeferred = authDeferred,
             failFastOnConnectError = true
@@ -248,12 +249,13 @@ class BanchoIrcClient @Inject constructor() {
 
     fun startBackgroundReconnect(username: String, password: String, initialChannels: List<String>) {
         if (isExplicitlyDisconnected.get()) return
-        val cleanNick = username.trim().replace(' ', '_')
-        if (cleanNick.isBlank() || password.isBlank()) return
+        val cleanNick = sanitizeIrcNick(username)
+        val cleanPass = sanitizeIrcPassword(password)
+        if (cleanNick.isBlank() || cleanPass.isBlank()) return
         scope.launch {
             lifecycleMutex.withLock {
                 if (isExplicitlyDisconnected.get()) return@withLock
-                val sameCreds = currentUsername == cleanNick && currentPassword == password
+                val sameCreds = currentUsername == cleanNick && currentPassword == cleanPass
                 if (_isAuthError.value && sameCreds) {
                     // Never auto-retry Bancho IRC with credentials already rejected by 464/465
                     return@withLock
@@ -264,7 +266,7 @@ class BanchoIrcClient @Inject constructor() {
                     _authErrorMessage.value = null
                     startConnectionLoopLocked(
                         nick = cleanNick,
-                        password = password,
+                        password = cleanPass,
                         initialChannels = initialChannels,
                         authDeferred = null,
                         failFastOnConnectError = false
@@ -607,9 +609,7 @@ class BanchoIrcClient @Inject constructor() {
     }
 
     suspend fun sendPrivMsg(target: String, text: String, isAction: Boolean = false): Boolean {
-        val trimmedTarget = target.replace('\u0000', ' ').replace("\r", "").replace("\n", "").trim()
-        if (trimmedTarget.isEmpty()) return false
-        val ircTarget = if (trimmedTarget.startsWith("#")) trimmedTarget.lowercase() else trimmedTarget.replace(' ', '_')
+        val ircTarget = sanitizePrivMsgTarget(target) ?: return false
         val lines = text.replace("\r", "").replace('\u0000', ' ').split('\n').filter { it.isNotBlank() }
         if (lines.isEmpty()) return false
         var anySent = false
@@ -625,13 +625,15 @@ class BanchoIrcClient @Inject constructor() {
     }
 
     private suspend fun sendRawLine(line: String, rateLimited: Boolean = false): Boolean {
+        val cleanLine = sanitizeRawIrcLine(line)
+        if (cleanLine.isBlank()) return false
         if (rateLimited) {
             rateLimiter.acquire()
         }
         return writeMutex.withLock {
             val activeWriter = synchronized(socketLock) { writer } ?: return@withLock false
             runCatching {
-                activeWriter.write(line)
+                activeWriter.write(cleanLine)
                 activeWriter.write("\r\n")
                 activeWriter.flush()
                 true
@@ -670,7 +672,7 @@ class BanchoIrcClient @Inject constructor() {
                 withTimeoutOrNull(QUIT_FLUSH_TIMEOUT_MS) {
                     writeMutex.withLock {
                         runCatching {
-                            oldWriter.write("QUIT :osu! Companion disconnected\r\n")
+                            oldWriter.write("QUIT :OsuCompanion disconnected\r\n")
                             oldWriter.flush()
                         }
                     }
@@ -739,12 +741,6 @@ class BanchoIrcClient @Inject constructor() {
         runCatching { localReader?.close() }
     }
 
-    private fun normalizeChannelName(raw: String): String? {
-        val clean = raw.trim().lowercase()
-        if (clean.isEmpty()) return null
-        return if (clean.startsWith("#")) clean else "#$clean"
-    }
-
     private fun formatAuthFailureMessage(rawReason: String): String {
         val clean = rawReason.trim().ifBlank { "Bad authentication token" }
         return "Bancho IRC authentication failed ($clean). Update your IRC password at $LEGACY_IRC_SETTINGS_URL"
@@ -752,14 +748,48 @@ class BanchoIrcClient @Inject constructor() {
 
     companion object {
         const val HOST = "irc.ppy.sh"
-        const val TLS_PORT = 6697
         const val PLAIN_PORT = 6667
         const val LEGACY_IRC_SETTINGS_URL = "https://osu.ppy.sh/home/account/edit#legacy-api"
-        private val DEFAULT_CHANNELS = listOf("#turkish", "#osu", "#lobby", "#announce")
+        private val DEFAULT_CHANNELS = listOf("#osu", "#lobby", "#announce")
         private const val CONNECT_TIMEOUT_MS = 10_000
         private const val READ_TIMEOUT_MS = 45_000
         private const val PONG_TIMEOUT_MS = 15_000
         private const val VERIFY_TIMEOUT_MS = 20_000L
         private const val QUIT_FLUSH_TIMEOUT_MS = 1_000L
+
+        internal fun sanitizeRawIrcLine(raw: String): String =
+            raw.replace("\r", "").replace("\n", "").replace("\u0000", "")
+
+        internal fun sanitizeIrcNick(raw: String): String =
+            sanitizeRawIrcLine(raw)
+                .filterNot { it.isISOControl() }
+                .trim()
+                .replace(Regex("\\s+"), "_")
+
+        internal fun sanitizeIrcPassword(raw: String): String =
+            sanitizeRawIrcLine(raw)
+                .filterNot { it.isISOControl() }
+                .trim()
+
+        internal fun normalizeChannelName(raw: String): String? {
+            val stripped = sanitizeRawIrcLine(raw)
+                .filterNot { it.isWhitespace() || it.isISOControl() }
+                .lowercase(java.util.Locale.ROOT)
+            val body = stripped.trimStart('#')
+            if (body.isEmpty()) return null
+            return "#$body"
+        }
+
+        internal fun sanitizePrivMsgTarget(raw: String): String? {
+            val stripped = sanitizeRawIrcLine(raw)
+                .filterNot { it.isISOControl() }
+                .trim()
+            if (stripped.isEmpty()) return null
+            return if (stripped.startsWith("#")) {
+                normalizeChannelName(stripped)
+            } else {
+                stripped.replace(Regex("\\s+"), "_").takeIf { it.isNotBlank() }
+            }
+        }
     }
 }

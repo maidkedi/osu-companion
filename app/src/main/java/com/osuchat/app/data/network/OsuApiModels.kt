@@ -1,6 +1,50 @@
 package com.osuchat.app.data.network
 
+import com.google.gson.JsonDeserializationContext
+import com.google.gson.JsonDeserializer
+import com.google.gson.JsonElement
+import com.google.gson.annotations.JsonAdapter
 import com.google.gson.annotations.SerializedName
+import java.lang.reflect.Type
+
+/**
+ * Parses osu! API v2 `mods` arrays in both legacy (`["HD", "DT"]`) and
+ * `x-api-version: 20220705` object (`[{"acronym": "CL"}, {"acronym": "DT", "settings": {...}}]`) formats.
+ */
+class OsuModAcronymListDeserializer : JsonDeserializer<List<String>> {
+    override fun deserialize(
+        json: JsonElement?,
+        typeOfT: Type?,
+        context: JsonDeserializationContext?
+    ): List<String> {
+        if (json == null || json.isJsonNull) return emptyList()
+        if (json.isJsonPrimitive && json.asJsonPrimitive.isString) {
+            val raw = json.asString.trim().uppercase()
+            return if (raw.isNotEmpty()) listOf(raw) else emptyList()
+        }
+        if (!json.isJsonArray) return emptyList()
+        val result = ArrayList<String>(json.asJsonArray.size())
+        for (el in json.asJsonArray) {
+            if (el == null || el.isJsonNull) continue
+            val acronym = when {
+                el.isJsonPrimitive && el.asJsonPrimitive.isString -> el.asString
+                el.isJsonObject -> {
+                    val field = el.asJsonObject.get("acronym")
+                    if (field != null && field.isJsonPrimitive && field.asJsonPrimitive.isString) {
+                        field.asString
+                    } else {
+                        null
+                    }
+                }
+                else -> null
+            }?.trim()?.uppercase()
+            if (!acronym.isNullOrEmpty() && acronym !in result) {
+                result.add(acronym)
+            }
+        }
+        return result
+    }
+}
 
 data class OAuthTokenExchangeRequest(
     @SerializedName("grant_type") val grantType: String = "authorization_code",
@@ -207,22 +251,38 @@ data class OsuScoreStatisticsDto(
     @SerializedName("count_50") val count50: Int = 0,
     @SerializedName("count_miss") val countMiss: Int = 0,
     @SerializedName("count_geki") val countGeki: Int = 0,
-    @SerializedName("count_katu") val countKatu: Int = 0
-)
+    @SerializedName("count_katu") val countKatu: Int = 0,
+    @SerializedName("great") val great: Int? = null,
+    @SerializedName("ok") val ok: Int? = null,
+    @SerializedName("meh") val meh: Int? = null,
+    @SerializedName("miss") val miss: Int? = null
+) {
+    val resolvedCount300: Int get() = great ?: count300
+    val resolvedCount100: Int get() = ok ?: count100
+    val resolvedCount50: Int get() = meh ?: count50
+    val resolvedCountMiss: Int get() = miss ?: countMiss
+}
 
 data class OsuScoreDto(
     @SerializedName("id") val id: Long = 0L,
     @SerializedName("best_id") val bestId: Long? = null,
+    @SerializedName("legacy_score_id") val legacyScoreId: Long? = null,
+    @SerializedName("build_id") val buildId: Long? = null,
     @SerializedName("user_id") val userId: Long = 0L,
     @SerializedName("accuracy") val accuracy: Double = 0.0,
-    @SerializedName("mods") val mods: List<String>? = null,
+    @SerializedName("mods")
+    @JsonAdapter(OsuModAcronymListDeserializer::class)
+    val mods: List<String>? = null,
     @SerializedName("score") val score: Long = 0L,
     @SerializedName("total_score") val totalScore: Long? = null,
+    @SerializedName("classic_total_score") val classicTotalScore: Long? = null,
     @SerializedName("max_combo") val maxCombo: Int = 0,
     @SerializedName("passed") val passed: Boolean = true,
     @SerializedName("pp") val pp: Double? = null,
     @SerializedName("rank") val rank: String? = null,
+    @SerializedName("ruleset_id") val rulesetId: Int? = null,
     @SerializedName("created_at") val createdAt: String? = null,
+    @SerializedName("ended_at") val endedAt: String? = null,
     @SerializedName("statistics") val statistics: OsuScoreStatisticsDto? = null,
     @SerializedName("beatmap") val beatmap: OsuBeatmapDto? = null,
     @SerializedName("beatmapset") val beatmapset: OsuBeatmapsetSummaryDto? = null,
@@ -301,7 +361,9 @@ data class OsuMatchGameDto(
     @SerializedName("mode_int") val modeInt: Int? = null,
     @SerializedName("scoring_type") val scoringType: String? = null,
     @SerializedName("team_type") val teamType: String? = null,
-    @SerializedName("mods") val mods: List<String>? = null,
+    @SerializedName("mods")
+    @JsonAdapter(OsuModAcronymListDeserializer::class)
+    val mods: List<String>? = null,
     @SerializedName("beatmap") val beatmap: OsuBeatmapDto? = null,
     @SerializedName("scores") val scores: List<OsuMatchGameScoreDto>? = null
 )
@@ -309,7 +371,9 @@ data class OsuMatchGameDto(
 data class OsuMatchGameScoreDto(
     @SerializedName("user_id") val userId: Long = 0L,
     @SerializedName("accuracy") val accuracy: Double = 0.0,
-    @SerializedName("mods") val mods: List<String>? = null,
+    @SerializedName("mods")
+    @JsonAdapter(OsuModAcronymListDeserializer::class)
+    val mods: List<String>? = null,
     @SerializedName("score") val score: Long = 0L,
     @SerializedName("max_combo") val maxCombo: Int = 0,
     @SerializedName("passed") val passed: Boolean = true,

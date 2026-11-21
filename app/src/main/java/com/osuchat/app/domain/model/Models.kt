@@ -290,10 +290,13 @@ data class AppSettings(
     val autoJoinChannels: List<String> = DEFAULT_AUTO_JOIN_CHANNELS,
     val isExplicitlyDisconnected: Boolean = false,
     val ignoredUsers: Set<String> = emptySet(),
-    val ignoreDisplayMode: String = "HIDE"
+    val ignoreDisplayMode: String = "HIDE",
+    val trackedAlertsEnabled: Boolean = true,
+    val trackedAlertsIntervalMinutes: Int = 30,
+    val defaultTrackedTopPlayLimit: Int = 5
 ) {
     companion object {
-        val DEFAULT_AUTO_JOIN_CHANNELS: List<String> = listOf("#turkish", "#osu", "#lobby", "#announce")
+        val DEFAULT_AUTO_JOIN_CHANNELS: List<String> = listOf("#osu", "#lobby", "#announce")
     }
 }
 
@@ -325,7 +328,7 @@ data class AudioPlaybackState(
     val queueSize: Int = 0,
     val hasNext: Boolean = false,
     val hasPrevious: Boolean = false,
-    val autoAdvance: Boolean = true
+    val autoAdvance: Boolean = false
 )
 
 @Immutable
@@ -383,7 +386,9 @@ data class OsuScoreItem(
     val count300: Int = 0,
     val count100: Int = 0,
     val count50: Int = 0,
-    val bpm: Double = 0.0
+    val bpm: Double = 0.0,
+    val legacyScoreId: Long? = null,
+    val buildId: Long? = null
 ) {
     val gradeLabel: String
         get() = when (rank.uppercase()) {
@@ -391,6 +396,25 @@ data class OsuScoreItem(
             "SH" -> "S"
             else -> rank.uppercase()
         }
+
+    val isLazer: Boolean
+        get() = com.osuchat.app.util.ScoreRulesetClassifier.isLazer(
+            mods = mods,
+            legacyScoreId = legacyScoreId,
+            buildId = buildId
+        )
+
+    val isClassic: Boolean
+        get() = !isLazer
+
+    val gameplayMods: List<String>
+        get() = com.osuchat.app.util.ScoreRulesetClassifier.gameplayMods(mods)
+
+    val gameplayModsLabel: String
+        get() = com.osuchat.app.util.ScoreRulesetClassifier.gameplayModsLabel(mods)
+
+    val clientBadgeLabel: String
+        get() = com.osuchat.app.util.ScoreRulesetClassifier.clientBadgeLabel(mods, isLazer)
 
     val modsLabel: String
         get() = if (mods.isEmpty()) "" else "+${mods.joinToString("")}"
@@ -549,6 +573,7 @@ data class MpLobbyState(
 object OfficialOsuChannels {
     val PRIORITY: List<String> = listOf(
         "#osu",
+        "#english",
         "#announce",
         "#help",
         "#mapping",
@@ -566,7 +591,6 @@ object OfficialOsuChannels {
         "#ctb",
         "#czechoslovak",
         "#dutch",
-        "#english",
         "#estonian",
         "#filipino",
         "#finnish",
@@ -927,6 +951,18 @@ data class FriendScoreEventItem(
 ) {
     val displayName: String
         get() = if (!customAlias.isNullOrBlank()) "$customAlias ($username)" else username
+
+    val isLazer: Boolean
+        get() = com.osuchat.app.util.ScoreRulesetClassifier.isLazer(mods = mods)
+
+    val isClassic: Boolean
+        get() = !isLazer
+
+    val gameplayMods: List<String>
+        get() = com.osuchat.app.util.ScoreRulesetClassifier.gameplayMods(mods)
+
+    val clientBadgeLabel: String
+        get() = com.osuchat.app.util.ScoreRulesetClassifier.clientBadgeLabel(mods, isLazer)
 }
 
 @Immutable

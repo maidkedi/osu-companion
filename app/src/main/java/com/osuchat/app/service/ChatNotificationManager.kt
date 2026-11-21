@@ -98,11 +98,21 @@ class ChatNotificationManager @Inject constructor(
             setShowBadge(true)
         }
 
+        val trackedPlayerAlertsChannel = NotificationChannel(
+            TRACKED_PLAYER_ALERTS_CHANNEL_ID,
+            "Tracked player alerts",
+            NotificationManager.IMPORTANCE_DEFAULT
+        ).apply {
+            description = "Custom PP and rank milestones plus new Top-N plays for tracked players"
+            setShowBadge(true)
+        }
+
         notificationManager.createNotificationChannel(serviceChannel)
         notificationManager.createNotificationChannel(messageChannel)
         notificationManager.createNotificationChannel(ppTrackerChannel)
         notificationManager.createNotificationChannel(friendOnlineChannel)
         notificationManager.createNotificationChannel(mpTimerChannel)
+        notificationManager.createNotificationChannel(trackedPlayerAlertsChannel)
     }
 
     fun buildServiceNotification(status: ConnectionStatus, username: String?): Notification {
@@ -126,11 +136,11 @@ class ChatNotificationManager @Inject constructor(
 
         val userTag = username?.takeIf { it.isNotBlank() }?.let { " ($it)" }.orEmpty()
         val title = when (status) {
-            ConnectionStatus.ONLINE -> "osu! Companion connected$userTag"
-            ConnectionStatus.CONNECTING -> "Connecting to osu! Companion$userTag…"
-            ConnectionStatus.RECONNECTING -> "Reconnecting to osu! Companion$userTag…"
-            ConnectionStatus.ERROR -> "osu! Companion connection issue"
-            ConnectionStatus.OFFLINE -> "osu! Companion disconnected"
+            ConnectionStatus.ONLINE -> "OsuCompanion connected$userTag"
+            ConnectionStatus.CONNECTING -> "Connecting to OsuCompanion$userTag…"
+            ConnectionStatus.RECONNECTING -> "Reconnecting to OsuCompanion$userTag…"
+            ConnectionStatus.ERROR -> "OsuCompanion connection issue"
+            ConnectionStatus.OFFLINE -> "OsuCompanion disconnected"
         }
 
         return NotificationCompat.Builder(context, SERVICE_CHANNEL_ID)
@@ -282,7 +292,7 @@ class ChatNotificationManager @Inject constructor(
         // Group summary notification for Android notification shade grouping
         val summaryNotification = NotificationCompat.Builder(context, MESSAGE_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle("osu! Companion")
+            .setContentTitle("OsuCompanion")
             .setContentText("New messages")
             .setGroup(GROUP_KEY_MESSAGES)
             .setGroupSummary(true)
@@ -378,6 +388,46 @@ class ChatNotificationManager @Inject constructor(
             .setAutoCancel(true)
             .setContentIntent(openAppIntent)
 
+        if (avatarBitmap != null) {
+            builder.setLargeIcon(avatarBitmap)
+        }
+
+        notificationManager.notify(notifId, builder.build())
+    }
+
+    suspend fun showTrackedPlayerAlertNotification(
+        userId: Long,
+        alertKey: String,
+        title: String,
+        body: String,
+        avatarUrl: String?
+    ) {
+        if (!notificationManager.areNotificationsEnabled()) return
+        val cleanTitle = title.trim()
+        if (cleanTitle.isEmpty()) return
+
+        val avatarBitmap = loadAvatarBitmap(avatarUrl)
+        val notifId = trackedPlayerAlertNotificationId(userId, alertKey)
+        val openAppIntent = PendingIntent.getActivity(
+            context,
+            notifId,
+            Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val builder = NotificationCompat.Builder(context, TRACKED_PLAYER_ALERTS_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(cleanTitle)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setAutoCancel(true)
+            .setContentIntent(openAppIntent)
+
+        if (body.isNotBlank()) {
+            builder.setContentText(body)
+            builder.setStyle(NotificationCompat.BigTextStyle().bigText(body))
+        }
         if (avatarBitmap != null) {
             builder.setLargeIcon(avatarBitmap)
         }
@@ -510,6 +560,9 @@ class ChatNotificationManager @Inject constructor(
     private fun mpTimerNotificationId(channelId: String): Int =
         -((("mp_timer_${channelId.lowercase(Locale.ROOT)}").hashCode() and 0x3FFFFFFF) + 300_000)
 
+    private fun trackedPlayerAlertNotificationId(userId: Long, alertKey: String): Int =
+        -((("tracked_${userId}_${alertKey}").hashCode() and 0x3FFFFFFF) + 400_000)
+
     private suspend fun loadAvatarBitmap(url: String?): Bitmap? = withContext(Dispatchers.IO) {
         if (url.isNullOrBlank()) {
             return@withContext null
@@ -543,6 +596,7 @@ class ChatNotificationManager @Inject constructor(
         const val PP_TRACKER_CHANNEL_ID = "osu_chat_pp_tracker_channel"
         const val FRIEND_ONLINE_CHANNEL_ID = "osu_chat_friend_online_channel"
         const val MP_TIMER_CHANNEL_ID = "osu_chat_mp_timer_channel"
+        const val TRACKED_PLAYER_ALERTS_CHANNEL_ID = "tracked_player_alerts"
         const val SERVICE_NOTIFICATION_ID = 1001
         const val SUMMARY_NOTIFICATION_ID = 1002
         const val GROUP_KEY_MESSAGES = "com.osuchat.app.MESSAGES_GROUP"

@@ -5,6 +5,7 @@ import androidx.compose.runtime.Immutable
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.osuchat.app.data.model.TrackedPlayerAlertConfig
 import com.osuchat.app.data.network.OAuthConfig
 import com.osuchat.app.data.network.OsuApiException
 import com.osuchat.app.data.repository.ImageUploadRepository
@@ -49,6 +50,7 @@ import com.osuchat.app.domain.usecase.SendChatCommandUseCase
 import com.osuchat.app.service.BeatmapAudioPlayer
 import com.osuchat.app.util.BeatmapUrlParser
 import com.osuchat.app.util.ChatLogFormatter
+import com.osuchat.app.util.MappoolPickBanResolver
 import com.osuchat.app.util.MpLobbyParser
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
@@ -184,7 +186,9 @@ data class ChatUiState(
     val bookmarkedMessages: List<BookmarkedMessageItem> = emptyList(),
     val bookmarkedMessageIds: Set<String> = emptySet(),
     val ignoredUsers: Set<String> = emptySet(),
-    val ignoreDisplayMode: String = "HIDE"
+    val ignoreDisplayMode: String = "HIDE",
+    val trackedAlertConfigs: Map<String, TrackedPlayerAlertConfig> = emptyMap(),
+    val defaultTrackedTopPlayLimit: Int = 5
 )
 
 sealed class ChatUiEffect {
@@ -311,7 +315,8 @@ class ChatViewModel @Inject constructor(
         chatRepository.bookmarkedMessageIds,
         chatRepository.dotOnlyChannels,
         chatRepository.chatUserColors,
-        historySnapshotFlow
+        historySnapshotFlow,
+        chatRepository.trackedAlertConfigs
     ) { values ->
         val chSnap = values[0] as ChatChannelSnapshot
         val sessSnap = values[1] as ChatSessionSnapshot
@@ -332,6 +337,8 @@ class ChatViewModel @Inject constructor(
         val chatUserColors = values[10] as Map<String, ChatUserColorInfo>
         @Suppress("UNCHECKED_CAST")
         val historyPair = values[11] as Pair<ChannelHistoryState, Boolean>
+        @Suppress("UNCHECKED_CAST")
+        val trackedAlertConfigs = values[12] as Map<String, TrackedPlayerAlertConfig>
         val (historyState, repoRequiresReauth) = historyPair
         val rawMessages = chSnap.messages
         val filteredMessages = if (local.retriedMessageIds.isEmpty()) {
@@ -458,7 +465,9 @@ class ChatViewModel @Inject constructor(
             bookmarkedMessages = bookmarkedMessages,
             bookmarkedMessageIds = bookmarkedMessageIds,
             ignoredUsers = sessSnap.settings.ignoredUsers,
-            ignoreDisplayMode = sessSnap.settings.ignoreDisplayMode
+            ignoreDisplayMode = sessSnap.settings.ignoreDisplayMode,
+            trackedAlertConfigs = trackedAlertConfigs,
+            defaultTrackedTopPlayLimit = sessSnap.settings.defaultTrackedTopPlayLimit
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ChatUiState())
 
@@ -976,30 +985,9 @@ class ChatViewModel @Inject constructor(
         triggerMpCommands: Boolean
     ) {
         chatRepository.updateMatchSeriesState(channelId) { current ->
-            val nextStates = current.slotStates.toMutableMap()
-            if (targetState == MpPoolSlotState.AVAILABLE) {
-                nextStates.remove(slot.id)
-            } else {
-                nextStates[slot.id] = targetState
-            }
-            val isPickState = targetState == MpPoolSlotState.PICKED_RED ||
-                targetState == MpPoolSlotState.PICKED_BLUE ||
-                targetState == MpPoolSlotState.PLAYED_TB ||
-                targetState == MpPoolSlotState.PLAYED
-            val pickedBy = when (targetState) {
-                MpPoolSlotState.PICKED_RED -> MpTeam.RED
-                MpPoolSlotState.PICKED_BLUE -> MpTeam.BLUE
-                else -> MpTeam.NONE
-            }
-            current.copy(
-                slotStates = nextStates,
-                activePickedSlotId = if (isPickState) slot.id else current.activePickedSlotId,
-                activePickedSlotTag = if (isPickState) slot.slotTag else current.activePickedSlotTag,
-                activePickedBeatmapId = if (isPickState) slot.beatmapId else current.activePickedBeatmapId,
-                activePickedBy = if (isPickState) pickedBy else current.activePickedBy
-            )
+            MappoolPickBanResolver.applySlotTransition(current, slot, targetState)
         }
-        if (triggerMpCommands) {
+        if (triggerMpCommands && targetState != MpPoolSlotState.AVAILABLE) {
             applyMappoolSlot(slot)
         }
     }
@@ -1535,7 +1523,7 @@ class ChatViewModel @Inject constructor(
                     _effects.emit(
                         ChatUiEffect.ShowSnackbar(
                             if (tracked) {
-                                "Tracking ${profile.username} top PP plays"
+                                "Tracking alerts enabled for ${profile.username}"
                             } else {
                                 "Stopped tracking ${profile.username}"
                             }
@@ -1550,6 +1538,44 @@ class ChatViewModel @Inject constructor(
                         )
                     )
                 }
+        }
+    }
+
+    fun saveTrackedPlayerAlertConfig(
+        userId: Long,
+        mode: String,
+        config: TrackedPlayerAlertConfig,
+        username: String = "",
+        avatarUrl: String = ""
+    ) {
+        viewModelScope.launch {
+            chatRepository.saveTrackedPlayerAlertConfig(
+                userId = userId,
+                mode = mode,
+                config = config,
+                username = username,
+                avatarUrl = avatarUrl
+            )
+            localState.update { state ->
+                val cur = state.selectedProfile
+                if (cur != null &&
+                    ((userId > 0L && cur.userId == userId) ||
+                        (username.isNotBlank() && cur.username.equals(username, ignoreCase = true)))
+                ) {
+                    state.copy(selectedProfile = cur.copy(isTrackedForPp = true))
+                } else {
+                    state
+                }
+            }
+            _effects.emit(
+                ChatUiEffect.ShowSnackbar(
+                    if (username.isNotBlank()) {
+                        "Tracking rules saved for $username"
+                    } else {
+                        "Tracked player alert rules saved"
+                    }
+                )
+            )
         }
     }
 
@@ -1723,7 +1749,7 @@ class ChatViewModel @Inject constructor(
                 .onSuccess { nowMuted ->
                     _effects.emit(
                         ChatUiEffect.ShowSnackbar(
-                            if (nowMuted) "Bildirimler kapatıldı" else "Bildirimler açıldı"
+                            if (nowMuted) "Notifications muted" else "Notifications enabled"
                         )
                     )
                 }
@@ -1745,7 +1771,7 @@ class ChatViewModel @Inject constructor(
                 .onSuccess { nowDotOnly ->
                     _effects.emit(
                         ChatUiEffect.ShowSnackbar(
-                            if (nowDotOnly) "Sayı yerine sadece nokta" else "Okunmamış sayısı gösterilecek"
+                            if (nowDotOnly) "Dot-only badge enabled" else "Unread badge enabled"
                         )
                     )
                 }

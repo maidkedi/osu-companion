@@ -23,7 +23,8 @@ data class SimulatedBeatmapStats(
     val nMisses: Int = 0,
     val combo: Int? = null,
     val maxCombo: Int? = null,
-    val clockRate: Double = 1.0
+    val clockRate: Double = 1.0,
+    val isLazer: Boolean = true
 )
 
 object OsuBeatmapCalculator {
@@ -54,7 +55,8 @@ object OsuBeatmapCalculator {
         accuracyPercent: Double,
         nMisses: Int = 0,
         combo: Int? = null,
-        clockRate: Double? = null
+        clockRate: Double? = null,
+        isLazer: Boolean = true
     ): SimulatedBeatmapStats {
         val normMods = mods.map { it.trim().uppercase() }.filter { it.isNotEmpty() }.toSet()
         val hasHr = "HR" in normMods
@@ -167,7 +169,8 @@ object OsuBeatmapCalculator {
             nMisses = safeMisses,
             combo = safeCombo,
             maxCombo = resolvedMaxCombo,
-            clockRate = effectiveClockRate
+            clockRate = effectiveClockRate,
+            isLazer = isLazer
         )
     }
 

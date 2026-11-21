@@ -248,7 +248,7 @@ object NetworkAndDatabaseModule {
             .followSslRedirects(true)
             .addInterceptor { chain ->
                 val req = chain.request().newBuilder()
-                    .header("User-Agent", "OsuChat-Android/1.0")
+                    .header("User-Agent", "OsuCompanion/${BuildConfig.VERSION_NAME}")
                     .header("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8")
                     .build()
                 chain.proceed(req)

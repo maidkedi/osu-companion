@@ -60,6 +60,7 @@ import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Share
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Badge
@@ -120,6 +121,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.osuchat.app.data.model.TrackedPlayerAlertConfig
 import com.osuchat.app.domain.model.AudioQueueTrack
 import com.osuchat.app.domain.model.AuthMode
 import com.osuchat.app.domain.model.BeatmapSetSearchResult
@@ -149,6 +151,7 @@ import com.osuchat.app.ui.components.OsuMicroTag
 import com.osuchat.app.ui.components.PlayerAvatar
 import com.osuchat.app.ui.components.PlayerStatsBottomSheet
 import com.osuchat.app.ui.components.ScoreCardShareDialog
+import com.osuchat.app.ui.components.TrackedPlayerAlertsDialog
 import com.osuchat.app.ui.components.countryCodeToFlagEmoji
 import com.osuchat.app.ui.screens.chat.ChatScreen
 import com.osuchat.app.ui.theme.LocalOsuSurfaces
@@ -164,10 +167,21 @@ import com.osuchat.app.ui.theme.tnum
 import com.osuchat.app.util.AppShortcutManager
 import com.osuchat.app.util.BeatmapUrlParser
 import com.osuchat.app.util.ExternalOsuTarget
+import com.osuchat.app.util.TrackedPlayerAlertEngine
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+
+private data class TrackedAlertsTarget(
+    val userId: Long,
+    val username: String,
+    val mode: String,
+    val currentPp: Double?,
+    val currentRank: Int?,
+    val avatarUrl: String = "",
+    val isAlreadyTracked: Boolean = false
+)
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -194,7 +208,9 @@ fun HomeScreen(
     var dmPendingDelete by remember { mutableStateOf<ChatChannel?>(null) }
     var channelOptionsTargetId by rememberSaveable { mutableStateOf<String?>(null) }
     var miniPlayerStatsTrack by remember { mutableStateOf<AudioQueueTrack?>(null) }
+    var miniPlayerInitialIsLazer by remember { mutableStateOf(true) }
     var externalMpTargetMatchId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var trackedAlertsTarget by remember { mutableStateOf<TrackedAlertsTarget?>(null) }
     val channelForOptions = channelOptionsTargetId?.let { targetId ->
         state.allChannels.firstOrNull { it.id == targetId }
     }
@@ -368,7 +384,19 @@ fun HomeScreen(
                 viewModel.startDirectMessage(target, openChannelTarget)
             },
             onToggleTrackPp = { prof ->
-                viewModel.toggleTrackFriendPp(prof.username, prof.userId, prof.avatarUrl)
+                if (prof.isTrackedForPp) {
+                    viewModel.toggleTrackFriendPp(prof.username, prof.userId, prof.avatarUrl)
+                } else {
+                    trackedAlertsTarget = TrackedAlertsTarget(
+                        userId = prof.userId,
+                        username = prof.username,
+                        mode = state.selectedProfileMode,
+                        currentPp = prof.pp,
+                        currentRank = prof.globalRank,
+                        avatarUrl = prof.avatarUrl,
+                        isAlreadyTracked = false
+                    )
+                }
             },
             selfUsername = state.settings.username,
             onToggleFriend = viewModel::toggleFriendStatus,
@@ -391,7 +419,57 @@ fun HomeScreen(
             osuTrackHistory = state.selectedProfileOsuTrack,
             isOsuTrackLoading = state.isSelectedProfileOsuTrackLoading,
             errorMessage = state.selectedProfileError,
-            onRetry = viewModel::retrySelectedProfile
+            onRetry = viewModel::retrySelectedProfile,
+            trackedAlertConfig = state.selectedProfile?.let { prof ->
+                state.trackedAlertConfigs[
+                    TrackedPlayerAlertConfig.configKey(prof.userId, state.selectedProfileMode)
+                ]
+            },
+            defaultTrackedTopPlayLimit = state.settings.defaultTrackedTopPlayLimit,
+            onConfigureTrackedAlerts = { prof ->
+                trackedAlertsTarget = TrackedAlertsTarget(
+                    userId = prof.userId,
+                    username = prof.username,
+                    mode = state.selectedProfileMode,
+                    currentPp = prof.pp,
+                    currentRank = prof.globalRank,
+                    avatarUrl = prof.avatarUrl,
+                    isAlreadyTracked = prof.isTrackedForPp
+                )
+            }
+        )
+    }
+
+    trackedAlertsTarget?.let { target ->
+        val configKey = TrackedPlayerAlertConfig.configKey(target.userId, target.mode)
+        val initialConfig = state.trackedAlertConfigs[configKey] ?: TrackedPlayerAlertConfig()
+        TrackedPlayerAlertsDialog(
+            username = target.username,
+            mode = target.mode,
+            currentPp = target.currentPp,
+            currentRank = target.currentRank,
+            initialConfig = initialConfig,
+            defaultTopPlayLimit = state.settings.defaultTrackedTopPlayLimit,
+            isAlreadyTracked = target.isAlreadyTracked,
+            onUntrack = if (target.isAlreadyTracked) {
+                {
+                    viewModel.toggleTrackFriendPp(target.username, target.userId, target.avatarUrl)
+                    trackedAlertsTarget = null
+                }
+            } else {
+                null
+            },
+            onSave = { updated ->
+                viewModel.saveTrackedPlayerAlertConfig(
+                    userId = target.userId,
+                    mode = target.mode,
+                    config = updated,
+                    username = target.username,
+                    avatarUrl = target.avatarUrl
+                )
+                trackedAlertsTarget = null
+            },
+            onDismiss = { trackedAlertsTarget = null }
         )
     }
 
@@ -593,11 +671,15 @@ fun HomeScreen(
         BeatmapStatsBottomSheet(
             beatmapSet = sheetSet,
             initialDiffIndex = initialDiffIdx,
-            onDismiss = { miniPlayerStatsTrack = null },
+            onDismiss = {
+                miniPlayerStatsTrack = null
+                miniPlayerInitialIsLazer = true
+            },
             onResolveDetails = viewModel::resolveBeatmapDetails,
             onLoadScores = viewModel::loadBeatmapLeaderboard,
             onOpenPlayerProfile = { target ->
                 miniPlayerStatsTrack = null
+                miniPlayerInitialIsLazer = true
                 viewModel.openPlayerProfile(target)
             },
             onShowMessage = viewModel::showMessage,
@@ -613,8 +695,10 @@ fun HomeScreen(
             hasActiveMpLobby = (state.activeMpLobby?.isClosed == false) || state.mpChannels.isNotEmpty(),
             onSelectForMp = { mapId, modeInt ->
                 miniPlayerStatsTrack = null
+                miniPlayerInitialIsLazer = true
                 viewModel.selectBeatmapForMpLobby(mapId, modeInt)
-            }
+            },
+            initialIsLazer = miniPlayerInitialIsLazer
         )
     }
 
@@ -1216,6 +1300,7 @@ fun HomeScreen(
                                     },
                                     onOpenBeatmap = { event ->
                                         if (event.beatmapId > 0L) {
+                                            miniPlayerInitialIsLazer = event.isLazer
                                             miniPlayerStatsTrack = AudioQueueTrack(
                                                 beatmapId = event.beatmapId,
                                                 beatmapsetId = 0L,
@@ -1249,7 +1334,7 @@ fun HomeScreen(
                                                     fontWeight = FontWeight.SemiBold
                                                 )
                                                 Text(
-                                                    text = "$onlineAlertsCount online alerts · $trackedCount Top 5 PP tracked",
+                                                    text = "$onlineAlertsCount online alerts · $trackedCount tracked",
                                                     style = MaterialTheme.typography.labelSmall.tnum(),
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                                 )
@@ -1264,7 +1349,7 @@ fun HomeScreen(
                                                 if (state.isPpCheckRunning) {
                                                     CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                                                 } else {
-                                                    Text("Check PP")
+                                                    Text("Check alerts")
                                                 }
                                             }
                                         }
@@ -1279,11 +1364,36 @@ fun HomeScreen(
                                     authMode = state.settings.authMode,
                                     isLoading = state.isFriendsLoading,
                                     errorMessage = state.friendsError,
+                                    trackedAlertConfigs = state.trackedAlertConfigs,
+                                    defaultTrackedTopPlayLimit = state.settings.defaultTrackedTopPlayLimit,
                                     onOpenDm = { friend -> viewModel.openFriendDmFast(friend, openChannelTarget) },
                                     onOpenProfile = { friend -> viewModel.openPlayerProfile(friend.username) },
                                     onToggleOnlineAlert = { friend -> viewModel.toggleFriendOnlineAlert(friend) },
                                     onToggleTrackPp = { friend ->
-                                        viewModel.toggleTrackFriendPp(friend.username, friend.userId, friend.avatarUrl)
+                                        if (friend.isTrackedForPp) {
+                                            viewModel.toggleTrackFriendPp(friend.username, friend.userId, friend.avatarUrl)
+                                        } else {
+                                            trackedAlertsTarget = TrackedAlertsTarget(
+                                                userId = friend.userId,
+                                                username = friend.username,
+                                                mode = friend.mode,
+                                                currentPp = friend.pp,
+                                                currentRank = friend.globalRank,
+                                                avatarUrl = friend.avatarUrl,
+                                                isAlreadyTracked = false
+                                            )
+                                        }
+                                    },
+                                    onConfigureTrackedAlerts = { friend ->
+                                        trackedAlertsTarget = TrackedAlertsTarget(
+                                            userId = friend.userId,
+                                            username = friend.username,
+                                            mode = friend.mode,
+                                            currentPp = friend.pp,
+                                            currentRank = friend.globalRank,
+                                            avatarUrl = friend.avatarUrl,
+                                            isAlreadyTracked = friend.isTrackedForPp
+                                        )
                                     },
                                     onRefresh = viewModel::refreshFriends,
                                     onClearSearch = viewModel::clearFriendSearch,
@@ -1398,7 +1508,19 @@ fun HomeScreen(
                             onSearchPlayers = viewModel::searchPlayers,
                             onOpenPlayerProfile = viewModel::openPlayerProfile,
                             onToggleTrackPp = { p ->
-                                viewModel.toggleTrackFriendPp(p.username, p.userId, p.avatarUrl)
+                                if (p.isTrackedForPp) {
+                                    viewModel.toggleTrackFriendPp(p.username, p.userId, p.avatarUrl)
+                                } else {
+                                    trackedAlertsTarget = TrackedAlertsTarget(
+                                        userId = p.userId,
+                                        username = p.username,
+                                        mode = p.mode.ifBlank { state.rankingMode },
+                                        currentPp = p.pp,
+                                        currentRank = p.globalRank,
+                                        avatarUrl = p.avatarUrl,
+                                        isAlreadyTracked = false
+                                    )
+                                }
                             },
                             selfProfile = state.selfProfile,
                             isLoadingSelfProfile = state.isLoadingSelfProfile,
@@ -1528,7 +1650,7 @@ private fun OnlineFriendsBar(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 private fun FriendsListSection(
     friends: List<FriendContact>,
@@ -1537,10 +1659,13 @@ private fun FriendsListSection(
     authMode: AuthMode,
     isLoading: Boolean,
     errorMessage: String?,
+    trackedAlertConfigs: Map<String, TrackedPlayerAlertConfig>,
+    defaultTrackedTopPlayLimit: Int,
     onOpenDm: (FriendContact) -> Unit,
     onOpenProfile: (FriendContact) -> Unit,
     onToggleOnlineAlert: (FriendContact) -> Unit,
     onToggleTrackPp: (FriendContact) -> Unit,
+    onConfigureTrackedAlerts: (FriendContact) -> Unit,
     onRefresh: () -> Unit,
     onClearSearch: () -> Unit,
     onBrowsePlayers: () -> Unit
@@ -1733,6 +1858,33 @@ private fun FriendsListSection(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
+                            if (friend.isTrackedForPp && friend.userId > 0L) {
+                                val alertConfig = trackedAlertConfigs[
+                                    TrackedPlayerAlertConfig.configKey(friend.userId, friend.mode)
+                                ]
+                                val badges = remember(alertConfig, defaultTrackedTopPlayLimit) {
+                                    TrackedPlayerAlertEngine.buildConfigBadgeLabels(
+                                        config = alertConfig,
+                                        defaultLimit = defaultTrackedTopPlayLimit
+                                    )
+                                }
+                                FlowRow(
+                                    modifier = Modifier
+                                        .padding(top = OsuSpacing.xs)
+                                        .clickable { onConfigureTrackedAlerts(friend) },
+                                    horizontalArrangement = Arrangement.spacedBy(OsuSpacing.xs),
+                                    verticalArrangement = Arrangement.spacedBy(OsuSpacing.xs)
+                                ) {
+                                    badges.forEach { badge ->
+                                        OsuMicroTag(
+                                            text = badge,
+                                            containerColor = LocalOsuSurfaces.current.accentSubtle,
+                                            contentColor = MaterialTheme.colorScheme.primary,
+                                            isNumeric = true
+                                        )
+                                    }
+                                }
+                            }
                         }
                         if (friend.userId > 0L) {
                             IconButton(
@@ -1756,10 +1908,23 @@ private fun FriendsListSection(
                             ) {
                                 Icon(
                                     imageVector = Icons.Rounded.EmojiEvents,
-                                    contentDescription = "Track Top 5 PP Plays",
+                                    contentDescription = if (friend.isTrackedForPp) "Stop tracking player" else "Track player",
                                     tint = trackTint,
                                     modifier = Modifier.size(20.dp)
                                 )
+                            }
+                            if (friend.isTrackedForPp) {
+                                IconButton(
+                                    onClick = { onConfigureTrackedAlerts(friend) },
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Tune,
+                                        contentDescription = "Alert rules",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
                             }
                         }
                         TextButton(
@@ -2271,7 +2436,20 @@ private fun FriendScoreFeedSection(
                                         horizontalArrangement = Arrangement.spacedBy(OsuSpacing.xs),
                                         verticalArrangement = Arrangement.spacedBy(OsuSpacing.xs)
                                     ) {
-                                        event.mods.forEach { mod ->
+                                        OsuMicroTag(
+                                            text = event.clientBadgeLabel,
+                                            containerColor = if (event.isLazer) {
+                                                surfaces.accentSubtle
+                                            } else {
+                                                MaterialTheme.colorScheme.surfaceContainerHigh
+                                            },
+                                            contentColor = if (event.isLazer) {
+                                                MaterialTheme.colorScheme.primary
+                                            } else {
+                                                MaterialTheme.colorScheme.onSurfaceVariant
+                                            }
+                                        )
+                                        event.gameplayMods.forEach { mod ->
                                             OsuMicroTag(text = mod)
                                         }
                                     }

@@ -148,6 +148,10 @@ class BanchoStatsWidget : AppWidgetProvider() {
 
         fun schedulePeriodicUpdates(context: Context) {
             val appContext = context.applicationContext
+            if (!hasActiveWidgets(appContext)) {
+                cancelScheduledUpdates(appContext)
+                return
+            }
             runCatching {
                 val constraints = Constraints.Builder()
                     .setRequiredNetworkType(NetworkType.CONNECTED)
@@ -390,7 +394,7 @@ class BanchoStatsWidget : AppWidgetProvider() {
             )
 
             val isLoggedOut = snapshot.username.isBlank()
-            val usernameText = if (isLoggedOut) "osu! Companion" else snapshot.username
+            val usernameText = if (isLoggedOut) "OsuCompanion" else snapshot.username
             val onlineCount = snapshot.onlineFriendsCount.coerceAtLeast(0)
             val onlineFriendsText = when {
                 isLoggedOut -> ""

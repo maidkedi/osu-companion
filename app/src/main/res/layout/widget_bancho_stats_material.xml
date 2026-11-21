@@ -45,7 +45,7 @@
                     android:layout_height="wrap_content"
                     android:ellipsize="end"
                     android:maxLines="1"
-                    android:text="osu! Companion"
+                    android:text="OsuCompanion"
                     android:textColor="@color/widget_my_text_primary"
                     android:textSize="14sp"
                     android:textStyle="bold" />

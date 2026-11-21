@@ -2,6 +2,7 @@ package com.osuchat.app.domain.repository
 
 import android.content.Context
 import android.net.Uri
+import com.osuchat.app.data.model.TrackedPlayerAlertConfig
 import com.osuchat.app.domain.model.AppSettings
 import com.osuchat.app.domain.model.BeatmapLinkRef
 import com.osuchat.app.domain.model.BeatmapMetadata
@@ -63,6 +64,7 @@ interface ChatRepository {
     val channels: Flow<List<ChatChannel>>
     val friends: Flow<List<FriendContact>>
     val trackedFriendNorms: Flow<Set<String>>
+    val trackedAlertConfigs: Flow<Map<String, TrackedPlayerAlertConfig>>
     val friendScoreEvents: Flow<List<FriendScoreEventItem>>
     val allAliases: Flow<List<UserAlias>>
     val savedBeatmaps: Flow<List<SavedBeatmapItem>>
@@ -191,11 +193,21 @@ interface ChatRepository {
     suspend fun resetRefereeMacros()
     suspend fun saveMatchSetupTemplates(templates: List<MatchSetupTemplate>)
 
-    // Top 5 PP Score Tracker & Friend Alerts/Feed
+    // Custom Milestones & Configurable Top-N Score Tracker
     suspend fun toggleTrackFriendPp(username: String, userId: Long = 0L, avatarUrl: String = ""): Result<Boolean>
     suspend fun toggleFriendOnlineAlert(username: String, userId: Long = 0L, avatarUrl: String = ""): Result<Boolean>
     suspend fun checkTrackedFriendsTopPlays(forceNotifyLatest: Boolean = false): Result<Int>
     suspend fun refreshFriendScoreFeed(): Result<Int>
+    suspend fun setTrackedAlertsEnabled(enabled: Boolean)
+    suspend fun setTrackedAlertsIntervalMinutes(minutes: Int)
+    suspend fun setDefaultTrackedTopPlayLimit(limit: Int)
+    suspend fun saveTrackedPlayerAlertConfig(
+        userId: Long,
+        mode: String,
+        config: TrackedPlayerAlertConfig,
+        username: String = "",
+        avatarUrl: String = ""
+    )
 
     // Daily Profile History Snapshots & Session Tracker
     suspend fun recordDailyProfileSnapshot(profile: SelfProfile)

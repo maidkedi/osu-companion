@@ -1,8 +1,11 @@
 package com.osuchat.app.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -14,6 +17,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -46,9 +50,13 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -274,15 +282,67 @@ fun MatchSetupWizardDialog(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(OsuSpacing.sm)
+                            .horizontalScroll(rememberScrollState())
+                            .padding(end = OsuSpacing.xs),
+                        horizontalArrangement = Arrangement.spacedBy(OsuSpacing.xs)
                     ) {
                         availableTemplates.forEach { tmpl ->
-                            OsuFilterChip(
-                                label = tmpl.name,
-                                selected = tmpl.id == selectedTemplateId,
-                                onClick = { if (!isRunning) applyTemplate(tmpl) }
+                            val selected = tmpl.id == selectedTemplateId
+                            val chipBg by animateColorAsState(
+                                targetValue = if (selected) {
+                                    surfaces.accentSubtle
+                                } else {
+                                    MaterialTheme.colorScheme.surfaceContainerLow
+                                },
+                                animationSpec = OsuMotion.colorSpec(),
+                                label = "wizardPresetBg"
                             )
+                            val chipFg by animateColorAsState(
+                                targetValue = if (selected) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
+                                animationSpec = OsuMotion.colorSpec(),
+                                label = "wizardPresetFg"
+                            )
+                            val chipBorder by animateColorAsState(
+                                targetValue = if (selected) {
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.28f)
+                                } else {
+                                    MaterialTheme.colorScheme.outlineVariant
+                                },
+                                animationSpec = OsuMotion.colorSpec(),
+                                label = "wizardPresetBorder"
+                            )
+                            Surface(
+                                shape = controlShape,
+                                color = chipBg,
+                                border = osuHairlineBorder(chipBorder),
+                                tonalElevation = 0.dp,
+                                shadowElevation = 0.dp,
+                                modifier = Modifier
+                                    .height(36.dp)
+                                    .clip(controlShape)
+                                    .clickable(enabled = !isRunning, role = Role.Tab) {
+                                        applyTemplate(tmpl)
+                                    }
+                            ) {
+                                Box(
+                                    modifier = Modifier.padding(horizontal = OsuSpacing.md),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = tmpl.name,
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                                        color = chipFg,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
                         }
                     }
 
@@ -388,85 +448,89 @@ fun MatchSetupWizardDialog(
                         modifier = Modifier.fillMaxWidth()
                     )
 
-                    Text(
-                        text = "Best of",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(OsuSpacing.sm)
-                    ) {
-                        BEST_OF_OPTIONS.forEach { bo ->
-                            OsuFilterChip(
-                                label = "Bo$bo",
-                                selected = bestOf == bo,
-                                onClick = { if (!isRunning) bestOf = bo },
-                                isNumeric = true
+                    Column(verticalArrangement = Arrangement.spacedBy(OsuSpacing.xs)) {
+                        Text(
+                            text = "Best of",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(OsuSpacing.xs)
+                        ) {
+                            BEST_OF_OPTIONS.forEach { bo ->
+                                WizardSegmentChoice(
+                                    label = "Bo$bo",
+                                    selected = bestOf == bo,
+                                    enabled = !isRunning,
+                                    onClick = { bestOf = bo },
+                                    modifier = Modifier.weight(1f),
+                                    isNumeric = true
+                                )
+                            }
+                        }
+                    }
+
+                    Column(verticalArrangement = Arrangement.spacedBy(OsuSpacing.xs)) {
+                        Text(
+                            text = "Team mode",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(OsuSpacing.sm)
+                        ) {
+                            WizardSegmentChoice(
+                                label = "H2H",
+                                selected = teamMode == MatchSetupTemplate.TEAM_MODE_HEAD_TO_HEAD,
+                                enabled = !isRunning,
+                                onClick = { teamMode = MatchSetupTemplate.TEAM_MODE_HEAD_TO_HEAD },
+                                modifier = Modifier.weight(1f)
+                            )
+                            WizardSegmentChoice(
+                                label = "TeamVs",
+                                selected = teamMode == MatchSetupTemplate.TEAM_MODE_TEAM_VS,
+                                enabled = !isRunning,
+                                onClick = { teamMode = MatchSetupTemplate.TEAM_MODE_TEAM_VS },
+                                modifier = Modifier.weight(1f)
                             )
                         }
                     }
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(OsuSpacing.sm)
-                    ) {
-                        Column(
-                            modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(OsuSpacing.xs)
+                    Column(verticalArrangement = Arrangement.spacedBy(OsuSpacing.xs)) {
+                        Text(
+                            text = "Score mode",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(OsuSpacing.sm)
                         ) {
-                            Text(
-                                text = "Team mode",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Row(horizontalArrangement = Arrangement.spacedBy(OsuSpacing.sm)) {
-                                OsuFilterChip(
-                                    label = "H2H",
-                                    selected = teamMode == MatchSetupTemplate.TEAM_MODE_HEAD_TO_HEAD,
-                                    onClick = { if (!isRunning) teamMode = MatchSetupTemplate.TEAM_MODE_HEAD_TO_HEAD }
+                            listOf(
+                                MatchSetupTemplate.SCORE_MODE_SCORE to "Score",
+                                MatchSetupTemplate.SCORE_MODE_SCORE_V2 to "ScoreV2",
+                                MatchSetupTemplate.SCORE_MODE_ACCURACY to "Acc"
+                            ).forEach { (modeVal, label) ->
+                                WizardSegmentChoice(
+                                    label = label,
+                                    selected = scoreMode == modeVal,
+                                    enabled = !isRunning,
+                                    onClick = { scoreMode = modeVal },
+                                    modifier = Modifier.weight(1f)
                                 )
-                                OsuFilterChip(
-                                    label = "TeamVs",
-                                    selected = teamMode == MatchSetupTemplate.TEAM_MODE_TEAM_VS,
-                                    onClick = { if (!isRunning) teamMode = MatchSetupTemplate.TEAM_MODE_TEAM_VS }
-                                )
-                            }
-                        }
-                        Column(
-                            modifier = Modifier.weight(1.25f),
-                            verticalArrangement = Arrangement.spacedBy(OsuSpacing.xs)
-                        ) {
-                            Text(
-                                text = "Score mode",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Row(
-                                modifier = Modifier.horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(OsuSpacing.sm)
-                            ) {
-                                listOf(
-                                    MatchSetupTemplate.SCORE_MODE_SCORE to "Score",
-                                    MatchSetupTemplate.SCORE_MODE_SCORE_V2 to "ScoreV2",
-                                    MatchSetupTemplate.SCORE_MODE_ACCURACY to "Acc"
-                                ).forEach { (modeVal, label) ->
-                                    OsuFilterChip(
-                                        label = label,
-                                        selected = scoreMode == modeVal,
-                                        onClick = { if (!isRunning) scoreMode = modeVal }
-                                    )
-                                }
                             }
                         }
                     }
 
                     OsuGroupedContainer {
+                        val stepperShape = RoundedCornerShape(OsuRadius.sm)
+                        val canDecreaseSlots = !isRunning && roomSize > 2
+                        val canIncreaseSlots = !isRunning && roomSize < 16
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -476,38 +540,68 @@ fun MatchSetupWizardDialog(
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(OsuSpacing.xs)
+                                horizontalArrangement = Arrangement.spacedBy(OsuSpacing.sm)
                             ) {
                                 Text(
                                     text = "Slots",
                                     style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.Medium
                                 )
-                                IconButton(
-                                    onClick = { if (!isRunning && roomSize > 2) roomSize -= 1 },
-                                    enabled = !isRunning && roomSize > 2,
-                                    modifier = Modifier.size(32.dp)
+                                Surface(
+                                    shape = stepperShape,
+                                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    border = osuHairlineBorder(),
+                                    tonalElevation = 0.dp,
+                                    shadowElevation = 0.dp,
+                                    modifier = Modifier
+                                        .size(34.dp)
+                                        .alpha(if (canDecreaseSlots) 1f else 0.38f)
+                                        .clip(stepperShape)
+                                        .clickable(enabled = canDecreaseSlots) { roomSize -= 1 }
                                 ) {
-                                    Icon(Icons.Rounded.Remove, contentDescription = "Decrease slots", modifier = Modifier.size(16.dp))
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = Icons.Rounded.Remove,
+                                            contentDescription = "Decrease slots",
+                                            tint = MaterialTheme.colorScheme.onSurface,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
                                 }
                                 Text(
                                     text = roomSize.toString(),
                                     style = MaterialTheme.typography.titleSmall.tnum(),
                                     fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.primary
+                                    color = MaterialTheme.colorScheme.primary,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.widthIn(min = 28.dp)
                                 )
-                                IconButton(
-                                    onClick = { if (!isRunning && roomSize < 16) roomSize += 1 },
-                                    enabled = !isRunning && roomSize < 16,
-                                    modifier = Modifier.size(32.dp)
+                                Surface(
+                                    shape = stepperShape,
+                                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    border = osuHairlineBorder(),
+                                    tonalElevation = 0.dp,
+                                    shadowElevation = 0.dp,
+                                    modifier = Modifier
+                                        .size(34.dp)
+                                        .alpha(if (canIncreaseSlots) 1f else 0.38f)
+                                        .clip(stepperShape)
+                                        .clickable(enabled = canIncreaseSlots) { roomSize += 1 }
                                 ) {
-                                    Icon(Icons.Rounded.Add, contentDescription = "Increase slots", modifier = Modifier.size(16.dp))
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = Icons.Rounded.Add,
+                                            contentDescription = "Increase slots",
+                                            tint = MaterialTheme.colorScheme.onSurface,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
                                 }
                             }
 
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(OsuSpacing.xs)
+                                horizontalArrangement = Arrangement.spacedBy(OsuSpacing.sm)
                             ) {
                                 Text(
                                     text = "Lock slots",
@@ -653,16 +747,28 @@ fun MatchSetupWizardDialog(
                         OutlinedButton(
                             onClick = onCancelRunning,
                             shape = controlShape,
-                            border = osuHairlineBorder()
+                            border = osuHairlineBorder(),
+                            modifier = Modifier.height(44.dp)
                         ) {
-                            Text("Cancel setup")
+                            Text(
+                                text = "Cancel setup",
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
                     } else {
                         TextButton(
                             onClick = onDismiss,
-                            shape = controlShape
+                            shape = controlShape,
+                            modifier = Modifier.height(44.dp)
                         ) {
-                            Text("Cancel")
+                            Text(
+                                text = "Cancel",
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
                         Button(
                             onClick = {
@@ -670,13 +776,80 @@ fun MatchSetupWizardDialog(
                                 onRunWizard(currentConfig)
                             },
                             enabled = currentConfig.resolvedRoomName.isNotBlank(),
-                            shape = controlShape
+                            shape = controlShape,
+                            modifier = Modifier.height(44.dp)
                         ) {
-                            Text("Create & setup lobby")
+                            Text(
+                                text = "Create & setup lobby",
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun WizardSegmentChoice(
+    label: String,
+    selected: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    isNumeric: Boolean = false
+) {
+    val surfaces = LocalOsuSurfaces.current
+    val shape = RoundedCornerShape(OsuRadius.md)
+    val bgColor by animateColorAsState(
+        targetValue = if (selected) surfaces.accentSubtle else MaterialTheme.colorScheme.surfaceContainerLow,
+        animationSpec = OsuMotion.colorSpec(),
+        label = "wizardSegBg"
+    )
+    val textColor by animateColorAsState(
+        targetValue = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+        animationSpec = OsuMotion.colorSpec(),
+        label = "wizardSegFg"
+    )
+    val borderColor by animateColorAsState(
+        targetValue = if (selected) {
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.28f)
+        } else {
+            MaterialTheme.colorScheme.outlineVariant
+        },
+        animationSpec = OsuMotion.colorSpec(),
+        label = "wizardSegBorder"
+    )
+    val baseStyle = MaterialTheme.typography.labelMedium
+    val style = if (isNumeric) baseStyle.tnum() else baseStyle
+
+    Surface(
+        shape = shape,
+        color = bgColor,
+        border = osuHairlineBorder(borderColor),
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp,
+        modifier = modifier
+            .height(38.dp)
+            .clip(shape)
+            .clickable(enabled = enabled, role = Role.Tab, onClick = onClick)
+    ) {
+        Box(
+            modifier = Modifier.padding(horizontal = OsuSpacing.xs),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = label,
+                style = style,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                color = textColor,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }

@@ -340,7 +340,7 @@ fun ScoreCardShareDialog(
                                     val safeTitle = score.beatmapTitle.take(24).ifBlank { "score" }
                                     renderer.saveToGallery(card.file, "${score.username}_$safeTitle")
                                         .onSuccess {
-                                            onNotifyMessage("Saved score card to Pictures/osu-chat")
+                                            onNotifyMessage("Saved score card to Pictures/OsuCompanion")
                                         }
                                         .onFailure { err ->
                                             actionError = err.message ?: "Failed to save to gallery"

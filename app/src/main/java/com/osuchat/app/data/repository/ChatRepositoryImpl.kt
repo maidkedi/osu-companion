@@ -97,6 +97,7 @@ import com.osuchat.app.domain.model.OsuTrackPeak
 import com.osuchat.app.domain.model.OsuTrackPoint
 import com.osuchat.app.domain.model.OsuUserMedalUnlock
 import com.osuchat.app.domain.model.PlayerProfile
+import com.osuchat.app.data.model.TrackedPlayerAlertConfig
 import com.osuchat.app.domain.model.ProfileHistoryPoint
 import com.osuchat.app.domain.model.RankPpConversionResult
 import com.osuchat.app.domain.model.RefereeMacro
@@ -114,12 +115,18 @@ import com.osuchat.app.util.AppShortcutManager
 import com.osuchat.app.util.BeatmapUrlParser
 import com.osuchat.app.util.ChatHistorySyncHelper
 import com.osuchat.app.util.ChatLogFormatter
+import com.osuchat.app.util.MilestoneEvaluationResult
 import com.osuchat.app.util.MpLobbyParser
+import com.osuchat.app.util.NewTopPlayMatch
 import com.osuchat.app.util.OsuBeatmapCalculator
 import com.osuchat.app.util.RankPpMath
 import com.osuchat.app.util.RosuPpEngine
 import com.osuchat.app.util.SessionTrackerCalculator
+import com.osuchat.app.util.TopPlayCandidate
+import com.osuchat.app.util.TrackedPlayerAlertEngine
+import com.osuchat.app.util.TrackedPlayerAlertEngine.toTopPlayCandidate
 import com.osuchat.app.widget.BanchoStatsWidget
+import com.osuchat.app.worker.TrackedPlayerAlertWorker
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -160,6 +167,7 @@ import java.io.File
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneOffset
 import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -203,6 +211,7 @@ class ChatRepositoryImpl @Inject constructor(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val oauthExchangeMutex = Mutex()
     private val outboxFlushMutex = Mutex()
+    private val trackedAlertSyncMutex = Mutex()
     private val okHttpExchangeActive = AtomicBoolean(false)
     private val modeProfileCache = ConcurrentHashMap<String, Pair<Long, PlayerProfile>>()
     private val beatmapMemoryCache = LruCache<String, BeatmapMetadata>(128)
@@ -260,6 +269,11 @@ class ChatRepositoryImpl @Inject constructor(
         }
         .distinctUntilChanged()
         .flowOn(Dispatchers.IO)
+
+    override val trackedAlertConfigs: Flow<Map<String, TrackedPlayerAlertConfig>> =
+        prefs.trackedAlertConfigsFlow
+            .distinctUntilChanged()
+            .flowOn(Dispatchers.IO)
 
     private val onlineAlertFriendNorms: Flow<Set<String>> = trackedFriendDao.observeTrackedFriends()
         .map { entities ->
@@ -547,6 +561,31 @@ class ChatRepositoryImpl @Inject constructor(
             }
         }
         startPpTrackerLoop()
+        observeTrackedAlertWorkerSchedule()
+    }
+
+    private fun observeTrackedAlertWorkerSchedule() {
+        scope.launch {
+            combine(
+                prefs.settingsFlow
+                    .map { it.trackedAlertsEnabled to it.trackedAlertsIntervalMinutes }
+                    .distinctUntilChanged(),
+                trackedFriendNorms
+                    .map { it.isNotEmpty() }
+                    .distinctUntilChanged()
+            ) { (enabled, interval), hasTracked ->
+                Triple(enabled, interval, hasTracked)
+            }
+                .distinctUntilChanged()
+                .collect { (enabled, interval, hasTracked) ->
+                    TrackedPlayerAlertWorker.syncSchedule(
+                        context = context,
+                        enabled = enabled,
+                        intervalMinutes = interval,
+                        hasTrackedPlayers = hasTracked
+                    )
+                }
+        }
     }
 
     private suspend fun migrateLegacyDmIds() {
@@ -559,10 +598,14 @@ class ChatRepositoryImpl @Inject constructor(
         scope.launch {
             delay(15_000L)
             while (true) {
-                val current = prefs.settingsFlow.first()
-                if (current.authMode == AuthMode.OAUTH_V2 && !current.isExplicitlyDisconnected) {
-                    runCatching { refreshFriends() }
-                    runCatching { checkTrackedFriendsTopPlays() }
+                if (apiPoller.isForeground.value && networkMonitor.isOnline.value) {
+                    val current = prefs.settingsFlow.first()
+                    if (current.authMode == AuthMode.OAUTH_V2 && !current.isExplicitlyDisconnected) {
+                        runCatching { refreshFriends() }
+                        if (current.trackedAlertsEnabled) {
+                            runCatching { checkTrackedFriendsTopPlays() }
+                        }
+                    }
                 }
                 delay(180_000L)
             }
@@ -1499,7 +1542,7 @@ class ChatRepositoryImpl @Inject constructor(
             }
             trimmed.equals("/np", ignoreCase = true) -> {
                 isAction = true
-                content = "is listening to osu! Companion Radio"
+                content = "is listening to OsuCompanion Radio"
             }
             else -> {
                 isAction = false
@@ -1681,7 +1724,8 @@ class ChatRepositoryImpl @Inject constructor(
                 modsBitmask = modsBitmask,
                 accuracyPercent = acc,
                 nMisses = 0,
-                combo = null
+                combo = null,
+                isLazer = recent.isLazer
             )
         } else {
             null
@@ -1695,7 +1739,8 @@ class ChatRepositoryImpl @Inject constructor(
                 modsBitmask = modsBitmask,
                 accuracyPercent = acc,
                 nMisses = missCount,
-                combo = recent.maxCombo.takeIf { it > 0 }
+                combo = recent.maxCombo.takeIf { it > 0 },
+                isLazer = recent.isLazer
             )
         } else {
             null
@@ -1878,7 +1923,8 @@ class ChatRepositoryImpl @Inject constructor(
                 modsBitmask = modsBitmask,
                 accuracyPercent = acc,
                 nMisses = missCount,
-                combo = score.maxCombo.takeIf { it > 0 }
+                combo = score.maxCombo.takeIf { it > 0 },
+                isLazer = score.isLazer
             )
         } else {
             null
@@ -1907,7 +1953,8 @@ class ChatRepositoryImpl @Inject constructor(
                 modsBitmask = modsBitmask,
                 accuracyPercent = acc,
                 nMisses = 0,
-                combo = null
+                combo = null,
+                isLazer = score.isLazer
             )
         } else {
             null
@@ -3616,7 +3663,7 @@ class ChatRepositoryImpl @Inject constructor(
     }
 
     override suspend fun createMultiplayerLobby(roomName: String): Result<String> = withContext(Dispatchers.IO) {
-        val cleanName = MpLobbyParser.sanitizeRoomName(roomName).ifBlank { "osu! Companion Lobby" }
+        val cleanName = MpLobbyParser.sanitizeRoomName(roomName).ifBlank { "OsuCompanion Lobby" }
         val currentSettings = prefs.settingsFlow.first()
         ensureBotChannelAndIrcOnline(currentSettings)
 
@@ -4197,11 +4244,40 @@ class ChatRepositoryImpl @Inject constructor(
                 ?: "https://a.ppy.sh/$uid"
         }
 
+        val finalNorm = BeatmapUrlParser.normalizeUsername(finalName)
+        val apiFriend = _apiFriends.value.firstOrNull {
+            it.id == uid || it.username.equals(finalName, ignoreCase = true)
+        }
+        val cachedProfile = playerProfileCacheDao.getByUsername(finalNorm)
+        val mode = TrackedPlayerAlertConfig.normalizeMode(
+            resolvedProfile?.mode ?: apiFriend?.playmode
+        )
+        val settings = prefs.settingsFlow.first()
+        val existingConfig = prefs.getTrackedAlertConfigs()[
+            TrackedPlayerAlertConfig.configKey(uid, mode)
+        ] ?: TrackedPlayerAlertConfig()
+        val effectiveLimit = TrackedPlayerAlertEngine.effectiveTopPlayLimit(
+            existingConfig,
+            settings.defaultTrackedTopPlayLimit
+        )
+
         val token = apiPoller.getValidBearerToken()
-        val topScores = if (token != null && !apiPoller.isRateLimited()) {
+        var seedPp: Double? = resolvedProfile?.pp ?: apiFriend?.statistics?.pp ?: cachedProfile?.pp
+        var seedRank: Int? = resolvedProfile?.globalRank ?: apiFriend?.statistics?.globalRank ?: cachedProfile?.globalRank
+        if ((seedPp == null || seedRank == null) && token != null && !apiPoller.isRateLimited()) {
+            val fetchedUser = runCatching {
+                apiPoller.withOptionalBearerRetry(token) { bearer ->
+                    apiService.getUserWithMode(bearer, uid.toString(), mode, keyType = "id")
+                }
+            }.getOrNull()
+            if (seedPp == null) seedPp = fetchedUser?.statistics?.pp
+            if (seedRank == null) seedRank = fetchedUser?.statistics?.globalRank
+        }
+
+        val topScores = if (existingConfig.isTopPlaysEnabled() && token != null && !apiPoller.isRateLimited()) {
             runCatching {
                 apiPoller.withOptionalBearerRetry(token) { bearer ->
-                    apiService.getUserScores(bearer, uid, "best", includeFails = 0, limit = 5)
+                    apiService.getUserScores(bearer, uid, "best", includeFails = 0, mode = mode, limit = effectiveLimit)
                 }
             }.getOrDefault(emptyList())
         } else {
@@ -4210,17 +4286,40 @@ class ChatRepositoryImpl @Inject constructor(
         if (topScores.isNotEmpty()) {
             persistFriendScoreEvents(finalName, uid, finalAvatar, topScores)
         }
+        val nowMs = System.currentTimeMillis()
         val baselineIdsCsv = topScores.joinToString(",") { it.id.toString() }
+        val seededSeenIds = topScores
+            .mapNotNull { it.id.takeIf { id -> id > 0L } }
+            .take(TrackedPlayerAlertConfig.MAX_SEEN_SCORE_IDS)
+            .toSet()
+
+        prefs.updateTrackedPlayerAlertConfig(uid, mode) { current ->
+            current.copy(
+                baselinePp = if (current.isPpEnabled()) {
+                    seedPp?.takeIf { it.isFinite() && it >= 0.0 } ?: current.baselinePp
+                } else {
+                    current.baselinePp
+                },
+                baselineRank = if (current.isRankEnabled()) {
+                    seedRank?.takeIf { it > 0 } ?: current.baselineRank
+                } else {
+                    current.baselineRank
+                },
+                lastSyncedTopLimit = if (seededSeenIds.isNotEmpty()) effectiveLimit else current.lastSyncedTopLimit,
+                seenBestScoreIds = if (seededSeenIds.isNotEmpty()) seededSeenIds else current.seenBestScoreIds,
+                lastSyncEpochMs = nowMs
+            )
+        }
 
         trackedFriendDao.upsertTrackedFriend(
             TrackedFriendEntity(
-                normalizedUsername = BeatmapUrlParser.normalizeUsername(finalName),
+                normalizedUsername = finalNorm,
                 userId = uid,
                 username = finalName,
                 avatarUrl = finalAvatar,
                 topScoreIdsCsv = baselineIdsCsv,
-                lastCheckedAt = System.currentTimeMillis(),
-                addedAt = existing?.addedAt ?: System.currentTimeMillis(),
+                lastCheckedAt = nowMs,
+                addedAt = existing?.addedAt ?: nowMs,
                 notifyOnline = existing?.notifyOnline == true
             )
         )
@@ -4256,78 +4355,319 @@ class ChatRepositoryImpl @Inject constructor(
 
     override suspend fun checkTrackedFriendsTopPlays(forceNotifyLatest: Boolean): Result<Int> =
         withContext(Dispatchers.IO) {
-            if (apiPoller.getValidBearerToken() == null) {
-                return@withContext if (forceNotifyLatest) {
-                    Result.failure(IllegalStateException("Sign in with osu! OAuth to check friend scores"))
-                } else {
-                    Result.success(0)
-                }
-            }
-
-            val tracked = trackedFriendDao.getAllTrackedFriends()
-                .filter { it.lastCheckedAt > 0L || it.topScoreIdsCsv.isNotEmpty() }
-            var alertsSent = 0
-            for (friend in tracked) {
-                if (apiPoller.isRateLimited()) break
-                val scoreResult = runCatching {
-                    apiPoller.withBearerRetry("Sign in with osu! OAuth to check friend scores") { bearer ->
-                        apiService.getUserScores(bearer, friend.userId, "best", includeFails = 0, limit = 5)
+            trackedAlertSyncMutex.withLock {
+                if (apiPoller.getValidBearerToken() == null) {
+                    return@withLock if (forceNotifyLatest) {
+                        Result.failure(IllegalStateException("Sign in with osu! OAuth to check friend scores"))
+                    } else {
+                        Result.success(0)
                     }
                 }
-                val err = scoreResult.exceptionOrNull()
-                if (err != null) {
-                    if (err is CancellationException) throw err
-                    if (err is OsuApiException && (err.httpCode == 401 || err.httpCode == 429)) break
-                    continue
-                }
-                val topScores = scoreResult.getOrNull().orEmpty()
 
-                if (topScores.isEmpty()) continue
-                persistFriendScoreEvents(friend.username, friend.userId, friend.avatarUrl, topScores)
-                val prevIds = friend.topScoreIdsCsv
-                    .split(",")
-                    .mapNotNull { it.trim().toLongOrNull() }
-                    .toSet()
+                val settings = prefs.settingsFlow.first()
+                val tracked = trackedFriendDao.getAllTrackedFriends()
+                    .filter { it.lastCheckedAt > 0L || it.topScoreIdsCsv.isNotEmpty() }
+                if (tracked.isEmpty()) return@withLock Result.success(0)
 
-                val newEntries = if (prevIds.isNotEmpty()) {
-                    topScores.mapIndexedNotNull { index, dto ->
-                        if (dto.id !in prevIds) (index + 1) to dto else null
-                    }
-                } else if (forceNotifyLatest) {
-                    listOf(1 to topScores.first())
-                } else {
-                    emptyList()
-                }
+                val configsMap = prefs.getTrackedAlertConfigs()
+                val apiFriendsById = _apiFriends.value.associateBy { it.id }
+                var alertsSent = 0
+                var requestCount = 0
+                var abortAll = false
 
-                val entriesToNotify = if (newEntries.isEmpty() && forceNotifyLatest) {
-                    listOf(1 to topScores.first())
-                } else {
-                    newEntries
-                }
+                for (friend in tracked) {
+                    if (abortAll || apiPoller.isRateLimited()) break
+                    if (friend.userId <= 0L) continue
 
-                if (entriesToNotify.isNotEmpty()) {
-                    val alias = userAliasDao.getAlias(friend.normalizedUsername)?.customNickname?.takeIf { it.isNotBlank() }
-                    val displayName = if (!alias.isNullOrBlank()) "$alias (${friend.username})" else friend.username
-                    for ((rankPos, scoreDto) in entriesToNotify) {
-                        notificationManager.showFriendNewTopPlayNotification(
-                            displayName = displayName,
-                            rankPosition = rankPos,
-                            score = scoreDto.toDomain(friend.username),
-                            avatarUrl = friend.avatarUrl
+                    val apiFriend = apiFriendsById[friend.userId]
+                    val activeModes = TrackedPlayerAlertEngine.resolveActiveTrackedModes(
+                        userId = friend.userId,
+                        defaultPlaymode = apiFriend?.playmode,
+                        configsMap = configsMap
+                    )
+                    if (activeModes.isEmpty()) continue
+
+                    for ((mode, originalConfig) in activeModes) {
+                        if (apiPoller.isRateLimited()) {
+                            abortAll = true
+                            break
+                        }
+                        if (requestCount > 0) delay(350L)
+                        requestCount++
+
+                        var workingConfig = originalConfig
+                        if (workingConfig.isTopPlaysEnabled() &&
+                            workingConfig.seenBestScoreIds.isEmpty() &&
+                            friend.topScoreIdsCsv.isNotBlank() &&
+                            mode == TrackedPlayerAlertConfig.normalizeMode(apiFriend?.playmode)
+                        ) {
+                            val legacyIds = friend.topScoreIdsCsv
+                                .split(",")
+                                .mapNotNull { it.trim().toLongOrNull()?.takeIf { id -> id > 0L } }
+                                .toSet()
+                            if (legacyIds.isNotEmpty()) {
+                                workingConfig = workingConfig.copy(
+                                    seenBestScoreIds = legacyIds,
+                                    lastSyncedTopLimit = TrackedPlayerAlertConfig.clampTopPlayLimit(legacyIds.size),
+                                    lastSyncEpochMs = friend.lastCheckedAt
+                                )
+                            }
+                        }
+
+                        val needsProfileMetrics = workingConfig.isPpEnabled() || workingConfig.isRankEnabled()
+                        val fetchedUser = if (needsProfileMetrics) {
+                            val userResult = runCatching {
+                                apiPoller.withBearerRetry("Sign in with osu! OAuth to check tracked players") { bearer ->
+                                    apiService.getUserWithMode(
+                                        bearerToken = bearer,
+                                        userIdOrName = friend.userId.toString(),
+                                        mode = mode,
+                                        keyType = "id"
+                                    )
+                                }
+                            }
+                            val userErr = userResult.exceptionOrNull()
+                            if (userErr != null) {
+                                if (userErr is CancellationException) throw userErr
+                                if (userErr is OsuApiException && (userErr.httpCode == 401 || userErr.httpCode == 429)) {
+                                    abortAll = true
+                                    break
+                                }
+                            }
+                            userResult.getOrNull()
+                        } else {
+                            null
+                        }
+
+                        val (currentPp, currentRank) = TrackedPlayerAlertEngine.resolveModeProfileMetrics(
+                            requestedMode = mode,
+                            fetchedPp = fetchedUser?.statistics?.pp,
+                            fetchedRank = fetchedUser?.statistics?.globalRank,
+                            defaultPlaymode = apiFriend?.playmode,
+                            fallbackPp = apiFriend?.statistics?.pp,
+                            fallbackRank = apiFriend?.statistics?.globalRank
                         )
-                        alertsSent++
+                        val canNotify = settings.trackedAlertsEnabled || forceNotifyLatest
+                        val milestoneEval = if (needsProfileMetrics) {
+                            TrackedPlayerAlertEngine.evaluateCustomMilestones(
+                                config = workingConfig,
+                                currentPp = currentPp,
+                                currentRank = currentRank,
+                                consumeHits = canNotify
+                            )
+                        } else {
+                            MilestoneEvaluationResult(updatedConfig = workingConfig.sanitized(), hits = emptyList())
+                        }
+
+                        val alias = userAliasDao.getAlias(friend.normalizedUsername)?.customNickname?.takeIf { it.isNotBlank() }
+                        val resolvedUsername = fetchedUser?.username?.takeIf { it.isNotBlank() } ?: friend.username
+                        val displayName = if (!alias.isNullOrBlank()) "$alias ($resolvedUsername)" else resolvedUsername
+
+                        if (canNotify && milestoneEval.hits.isNotEmpty()) {
+                            val (milestoneTitle, milestoneBody) = TrackedPlayerAlertEngine.formatMilestoneNotification(
+                                username = displayName,
+                                mode = mode,
+                                hits = milestoneEval.hits,
+                                currentPp = currentPp,
+                                currentRank = currentRank
+                            )
+                            val alertKey = milestoneEval.hits.joinToString("_") { it.targetKey }
+                            notificationManager.showTrackedPlayerAlertNotification(
+                                userId = friend.userId,
+                                alertKey = "milestone_${mode}_$alertKey",
+                                title = milestoneTitle,
+                                body = milestoneBody,
+                                avatarUrl = friend.avatarUrl
+                            )
+                            alertsSent++
+                            prefs.saveTrackedPlayerAlertConfig(friend.userId, mode, milestoneEval.updatedConfig)
+                        }
+
+                        if (milestoneEval.updatedConfig.isTopPlaysEnabled()) {
+                            val effectiveLimit = TrackedPlayerAlertEngine.effectiveTopPlayLimit(
+                                milestoneEval.updatedConfig,
+                                settings.defaultTrackedTopPlayLimit
+                            )
+                            val scoreResult = runCatching {
+                                apiPoller.withBearerRetry("Sign in with osu! OAuth to check friend scores") { bearer ->
+                                    apiService.getUserScores(
+                                        bearerToken = bearer,
+                                        userId = friend.userId,
+                                        type = "best",
+                                        includeFails = 0,
+                                        mode = mode,
+                                        limit = effectiveLimit
+                                    )
+                                }
+                            }
+                            val scoreErr = scoreResult.exceptionOrNull()
+                            if (scoreErr != null) {
+                                if (scoreErr is CancellationException) throw scoreErr
+                                if (scoreErr is OsuApiException && (scoreErr.httpCode == 401 || scoreErr.httpCode == 429)) {
+                                    if (milestoneEval.updatedConfig != originalConfig) {
+                                        prefs.saveTrackedPlayerAlertConfig(friend.userId, mode, milestoneEval.updatedConfig)
+                                    }
+                                    abortAll = true
+                                    break
+                                }
+                            }
+
+                            if (scoreResult.isSuccess) {
+                                val topScores = scoreResult.getOrNull().orEmpty()
+                                if (topScores.isNotEmpty()) {
+                                    persistFriendScoreEvents(resolvedUsername, friend.userId, friend.avatarUrl, topScores)
+                                }
+                                val candidates: List<TopPlayCandidate> = topScores.map { dto ->
+                                    dto.toDomain(resolvedUsername).toTopPlayCandidate()
+                                }
+                                val nowMs = System.currentTimeMillis()
+                                val topPlaysEval = TrackedPlayerAlertEngine.evaluateNewTopPlays(
+                                    config = milestoneEval.updatedConfig,
+                                    defaultLimit = settings.defaultTrackedTopPlayLimit,
+                                    bestScores = candidates,
+                                    nowEpochMs = nowMs
+                                )
+
+                                prefs.saveTrackedPlayerAlertConfig(friend.userId, mode, topPlaysEval.updatedConfig)
+
+                                val playsToNotify = if (topPlaysEval.newPlays.isEmpty() && forceNotifyLatest && candidates.isNotEmpty()) {
+                                    listOf(NewTopPlayMatch(rankPosition = 1, candidate = candidates.first()))
+                                } else {
+                                    topPlaysEval.newPlays
+                                }
+                                if (canNotify && playsToNotify.isNotEmpty()) {
+                                    val (playTitle, playBody) = TrackedPlayerAlertEngine.formatTopPlaysNotification(
+                                        username = displayName,
+                                        newPlays = playsToNotify
+                                    )
+                                    val alertKey = playsToNotify.joinToString("_") { it.candidate.scoreId.toString() }
+                                    notificationManager.showTrackedPlayerAlertNotification(
+                                        userId = friend.userId,
+                                        alertKey = "top_${mode}_$alertKey",
+                                        title = playTitle,
+                                        body = playBody,
+                                        avatarUrl = friend.avatarUrl
+                                    )
+                                    alertsSent++
+                                }
+
+                                trackedFriendDao.upsertTrackedFriend(
+                                    friend.copy(
+                                        username = resolvedUsername,
+                                        topScoreIdsCsv = if (topScores.isNotEmpty() && mode == TrackedPlayerAlertConfig.normalizeMode(apiFriend?.playmode)) {
+                                            topScores.joinToString(",") { it.id.toString() }
+                                        } else {
+                                            friend.topScoreIdsCsv
+                                        },
+                                        lastCheckedAt = nowMs
+                                    )
+                                )
+                            } else if (milestoneEval.updatedConfig != originalConfig) {
+                                prefs.saveTrackedPlayerAlertConfig(friend.userId, mode, milestoneEval.updatedConfig)
+                            }
+                        } else {
+                            if (milestoneEval.updatedConfig != originalConfig) {
+                                prefs.saveTrackedPlayerAlertConfig(friend.userId, mode, milestoneEval.updatedConfig)
+                            }
+                            trackedFriendDao.upsertTrackedFriend(
+                                friend.copy(
+                                    username = resolvedUsername,
+                                    lastCheckedAt = System.currentTimeMillis()
+                                )
+                            )
+                        }
                     }
                 }
+                Result.success(alertsSent)
+            }
+        }
 
+    override suspend fun setTrackedAlertsEnabled(enabled: Boolean) {
+        prefs.setTrackedAlertsEnabled(enabled)
+    }
+
+    override suspend fun setTrackedAlertsIntervalMinutes(minutes: Int) {
+        prefs.setTrackedAlertsIntervalMinutes(minutes)
+    }
+
+    override suspend fun setDefaultTrackedTopPlayLimit(limit: Int) {
+        prefs.setDefaultTrackedTopPlayLimit(limit)
+    }
+
+    override suspend fun saveTrackedPlayerAlertConfig(
+        userId: Long,
+        mode: String,
+        config: TrackedPlayerAlertConfig,
+        username: String,
+        avatarUrl: String
+    ) {
+        withContext(Dispatchers.IO) {
+            val normMode = TrackedPlayerAlertConfig.normalizeMode(mode)
+            prefs.saveTrackedPlayerAlertConfig(userId, normMode, config)
+            val cleanName = username.trim()
+            val normName = cleanName.takeIf { it.isNotEmpty() }?.let(BeatmapUrlParser::normalizeUsername)
+            val existing = normName?.let { trackedFriendDao.getTrackedFriend(it) }
+                ?: trackedFriendDao.getAllTrackedFriends().firstOrNull { it.userId == userId }
+            val alreadyPpTracked = existing != null &&
+                (existing.lastCheckedAt > 0L || existing.topScoreIdsCsv.isNotEmpty())
+            if (!alreadyPpTracked && (cleanName.isNotEmpty() || existing != null)) {
+                toggleTrackFriendPp(
+                    username = cleanName.ifBlank { existing?.username.orEmpty() },
+                    userId = userId,
+                    avatarUrl = avatarUrl.ifBlank { existing?.avatarUrl.orEmpty() }
+                )
+            } else if (alreadyPpTracked && config.isTopPlaysEnabled() && config.seenBestScoreIds.isEmpty()) {
+                val token = apiPoller.getValidBearerToken()
+                if (token != null && !apiPoller.isRateLimited()) {
+                    val effectiveLimit = TrackedPlayerAlertEngine.effectiveTopPlayLimit(
+                        config,
+                        prefs.settingsFlow.first().defaultTrackedTopPlayLimit
+                    )
+                    val topScores = runCatching {
+                        apiPoller.withOptionalBearerRetry(token) { bearer ->
+                            apiService.getUserScores(
+                                bearerToken = bearer,
+                                userId = userId,
+                                type = "best",
+                                includeFails = 0,
+                                mode = normMode,
+                                limit = effectiveLimit
+                            )
+                        }
+                    }.getOrDefault(emptyList())
+                    val seededIds = topScores
+                        .mapNotNull { it.id.takeIf { id -> id > 0L } }
+                        .take(TrackedPlayerAlertConfig.MAX_SEEN_SCORE_IDS)
+                        .toSet()
+                    if (seededIds.isNotEmpty()) {
+                        val nowMs = System.currentTimeMillis()
+                        prefs.updateTrackedPlayerAlertConfig(userId, normMode) { current ->
+                            current.copy(
+                                lastSyncedTopLimit = effectiveLimit,
+                                seenBestScoreIds = seededIds,
+                                lastSyncEpochMs = nowMs
+                            )
+                        }
+                        if (existing != null) {
+                            trackedFriendDao.upsertTrackedFriend(
+                                existing.copy(
+                                    topScoreIdsCsv = topScores.joinToString(",") { it.id.toString() },
+                                    lastCheckedAt = nowMs
+                                )
+                            )
+                        }
+                    }
+                }
+            } else if (alreadyPpTracked && !config.isTopPlaysEnabled() && existing != null && existing.topScoreIdsCsv.isNotEmpty()) {
                 trackedFriendDao.upsertTrackedFriend(
-                    friend.copy(
-                        topScoreIdsCsv = topScores.joinToString(",") { it.id.toString() },
-                        lastCheckedAt = System.currentTimeMillis()
+                    existing.copy(
+                        topScoreIdsCsv = "",
+                        lastCheckedAt = existing.lastCheckedAt.coerceAtLeast(System.currentTimeMillis())
                     )
                 )
             }
-            Result.success(alertsSent)
         }
+    }
 
     override suspend fun refreshFriendScoreFeed(): Result<Int> = withContext(Dispatchers.IO) {
         if (apiPoller.getValidBearerToken() == null) {
@@ -4339,8 +4679,17 @@ class ChatRepositoryImpl @Inject constructor(
 
         if (ppTracked.isNotEmpty()) {
             checkTrackedFriendsTopPlays(forceNotifyLatest = false)
+            val configsMap = prefs.getTrackedAlertConfigs()
+            val apiFriendsById = _apiFriends.value.associateBy { it.id }
             for (friend in ppTracked) {
                 if (apiPoller.isRateLimited()) break
+                val apiFriend = apiFriendsById[friend.userId]
+                val activeModes = TrackedPlayerAlertEngine.resolveActiveTrackedModes(
+                    userId = friend.userId,
+                    defaultPlaymode = apiFriend?.playmode,
+                    configsMap = configsMap
+                )
+                if (activeModes.none { (_, cfg) -> cfg.isTopPlaysEnabled() }) continue
                 val recentScores = runCatching {
                     apiPoller.withBearerRetry("Sign in with osu! OAuth to load scores") { bearer ->
                         apiService.getUserScores(bearer, friend.userId, "recent", includeFails = 0, limit = 5)
@@ -4420,7 +4769,7 @@ class ChatRepositoryImpl @Inject constructor(
         val playCount = (profile.playCount ?: 0).coerceAtLeast(0)
         if (globalRank <= 0 && pp <= 0.0) return@withContext
 
-        val today = LocalDate.now()
+        val today = LocalDate.now(ZoneOffset.UTC)
         profileHistoryDao.upsertSnapshot(
             ProfileHistoryEntity(
                 dayKey = today.toString(),
@@ -4547,7 +4896,8 @@ class ChatRepositoryImpl @Inject constructor(
                             mods = modSet,
                             accuracyPercent = item.accuracy,
                             nMisses = item.countMiss,
-                            combo = item.maxCombo.takeIf { it > 0 }
+                            combo = item.maxCombo.takeIf { it > 0 },
+                            isLazer = item.isLazer
                         )
                     }.getOrNull()
                     if (calc != null && calc.pp.isFinite() && calc.pp > 0.0) {
@@ -6226,6 +6576,13 @@ class ChatRepositoryImpl @Inject constructor(
             ?: if (setId != null) "https://assets.ppy.sh/beatmaps/$setId/covers/card.jpg" else ""
         val resolvedUserId = user?.id ?: userId
         val accPct = if (accuracy <= 1.0) accuracy * 100.0 else accuracy
+        val resolvedMode = beatmap?.mode?.takeIf { it.isNotBlank() } ?: when (rulesetId) {
+            0 -> "osu"
+            1 -> "taiko"
+            2 -> "fruits"
+            3 -> "mania"
+            else -> "osu"
+        }
         return OsuScoreItem(
             id = id,
             userId = resolvedUserId,
@@ -6235,9 +6592,9 @@ class ChatRepositoryImpl @Inject constructor(
             accuracy = accPct,
             maxCombo = maxCombo,
             mods = mods.orEmpty(),
-            score = if (score > 0L) score else (totalScore ?: 0L),
+            score = if (score > 0L) score else (totalScore ?: classicTotalScore ?: 0L),
             passed = passed,
-            createdAt = createdAt.orEmpty(),
+            createdAt = createdAt ?: endedAt.orEmpty(),
             beatmapId = beatmap?.id,
             beatmapsetId = setId,
             beatmapTitle = beatmapset?.title ?: beatmap?.beatmapset?.title ?: "Unknown Beatmap",
@@ -6245,16 +6602,18 @@ class ChatRepositoryImpl @Inject constructor(
             beatmapVersion = beatmap?.version.orEmpty(),
             starRating = beatmap?.difficultyRating ?: 0.0,
             coverUrl = cover,
-            mode = beatmap?.mode ?: "osu",
+            mode = resolvedMode,
             userAvatarUrl = user?.avatarUrl ?: resolvedUserId.takeIf { it > 0L }?.let { "https://a.ppy.sh/$it" },
             userCountryCode = user?.country?.code ?: user?.countryCode ?: "XX",
-            countMiss = statistics?.countMiss ?: 0,
+            countMiss = statistics?.resolvedCountMiss ?: 0,
             beatmapMaxCombo = beatmap?.maxCombo,
             beatmapLengthSeconds = beatmap?.totalLength ?: 0,
-            count300 = statistics?.count300 ?: 0,
-            count100 = statistics?.count100 ?: 0,
-            count50 = statistics?.count50 ?: 0,
-            bpm = beatmap?.bpm ?: beatmapset?.bpm ?: beatmap?.beatmapset?.bpm ?: 0.0
+            count300 = statistics?.resolvedCount300 ?: 0,
+            count100 = statistics?.resolvedCount100 ?: 0,
+            count50 = statistics?.resolvedCount50 ?: 0,
+            bpm = beatmap?.bpm ?: beatmapset?.bpm ?: beatmap?.beatmapset?.bpm ?: 0.0,
+            legacyScoreId = legacyScoreId,
+            buildId = buildId
         )
     }
 
@@ -6455,7 +6814,7 @@ class ChatRepositoryImpl @Inject constructor(
 
     companion object {
         private const val FRIEND_ONLINE_ALERT_COOLDOWN_MS = 15 * 60_000L
-        private val DEFAULT_PUBLIC_CHANNELS = listOf("#turkish", "#osu", "#lobby", "#announce")
+        private val DEFAULT_PUBLIC_CHANNELS = listOf("#osu", "#lobby", "#announce")
         private val VALID_OSU_MODES = setOf("osu", "taiko", "fruits", "mania")
         private val HTML_STRIP_BLOCK_REGEX = Regex(
             """<(script|style)\b[^>]*>.*?</\1>""",

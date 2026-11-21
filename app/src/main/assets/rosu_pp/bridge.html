@@ -98,7 +98,7 @@
     function (err) { postReady(false, err && err.message ? err.message : String(err)); }
   );
 
-  window.calculateRosu = async function (requestId, osuBase64, modeStr, modsInput, accuracy, nMisses, combo, clockRate) {
+  window.calculateRosu = async function (requestId, osuBase64, modeStr, modsInput, accuracy, nMisses, combo, clockRate, isLazer) {
     const reqIdNum = Number(requestId);
     if (!Number.isSafeInteger(reqIdNum) || reqIdNum < 0) {
       postResult({ requestId: -1, ok: false, error: 'Invalid requestId' });
@@ -150,13 +150,15 @@
         ? Math.min(2.0, Math.max(0.5, rateNum))
         : null;
 
-      diff = new rosu.Difficulty({ mods: modsArg, lazer: false });
+      const useLazer = isLazer === undefined || isLazer === null ? false : Boolean(isLazer);
+
+      diff = new rosu.Difficulty({ mods: modsArg, lazer: useLazer });
       if (clampedRate !== null) {
         diff.clockRate = clampedRate;
       }
       diffAttrs = diff.calculate(map);
 
-      perf = new rosu.Performance({ mods: modsArg, accuracy: clampedAcc, lazer: false });
+      perf = new rosu.Performance({ mods: modsArg, accuracy: clampedAcc, lazer: useLazer });
       if (clampedRate !== null) {
         perf.clockRate = clampedRate;
       }

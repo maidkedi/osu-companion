@@ -74,7 +74,9 @@
     <init>();
 }
 -keep class com.osuchat.app.data.network.** { *; }
+-keep class com.osuchat.app.data.model.** { *; }
 -keep class com.osuchat.app.domain.model.** { *; }
+-keep class com.osuchat.app.worker.** { *; }
 -keep class com.osuchat.app.data.repository.OsekaiMedalDto { *; }
 -keep class com.osuchat.app.data.repository.MedalsCatalogRepository$** { *; }
 -keep class com.osuchat.app.data.repository.OsuTrackStatEntryDto { *; }

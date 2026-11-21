@@ -140,6 +140,7 @@ import coil.compose.AsyncImage
 import coil.compose.AsyncImagePainter
 import coil.request.CachePolicy
 import coil.request.ImageRequest
+import com.osuchat.app.data.model.TrackedPlayerAlertConfig
 import com.osuchat.app.data.network.OAuthConfig
 import com.osuchat.app.di.NetworkAndDatabaseModule
 import com.osuchat.app.domain.model.AudioPlaybackState
@@ -167,6 +168,7 @@ import com.osuchat.app.ui.components.OsuMicroTag
 import com.osuchat.app.ui.components.PlayerAvatar
 import com.osuchat.app.ui.components.PlayerStatsBottomSheet
 import com.osuchat.app.ui.components.ScoreCardShareDialog
+import com.osuchat.app.ui.components.TrackedPlayerAlertsDialog
 import com.osuchat.app.ui.components.UserProfilePreviewCard
 import com.osuchat.app.ui.components.WallpaperCustomizerPanel
 import com.osuchat.app.ui.theme.LocalOsuSurfaces
@@ -250,6 +252,7 @@ fun ChatScreen(
     var showExportFormatDialog by remember(activeChannelId) { mutableStateOf(false) }
     var previewImageUrl by rememberSaveable(activeChannelId) { mutableStateOf<String?>(null) }
     var pendingShareScoreCard by remember(activeChannelId) { mutableStateOf<OsuScoreItem?>(null) }
+    var trackedAlertsDialogProfile by remember(activeChannelId) { mutableStateOf<PlayerProfile?>(null) }
     var showMpController by rememberSaveable(activeChannelId) { mutableStateOf(activeIsMpRoom) }
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
@@ -514,7 +517,13 @@ fun ChatScreen(
             onDismiss = viewModel::dismissPlayerProfile,
             onSaveAlias = viewModel::saveUserAlias,
             onStartDirectMessage = viewModel::startDirectMessage,
-            onToggleTrackPp = viewModel::toggleTrackFriendPp,
+            onToggleTrackPp = { prof ->
+                if (prof.isTrackedForPp) {
+                    viewModel.toggleTrackFriendPp(prof)
+                } else {
+                    trackedAlertsDialogProfile = prof
+                }
+            },
             selfUsername = state.selfUsername,
             onToggleFriend = viewModel::toggleFriendStatus,
             isIgnored = state.selectedProfile?.let { prof ->
@@ -536,7 +545,50 @@ fun ChatScreen(
             osuTrackHistory = state.selectedProfileOsuTrack,
             isOsuTrackLoading = state.isSelectedProfileOsuTrackLoading,
             errorMessage = state.profileError,
-            onRetry = viewModel::retryLoadPlayerProfile
+            onRetry = viewModel::retryLoadPlayerProfile,
+            trackedAlertConfig = state.selectedProfile?.let { prof ->
+                state.trackedAlertConfigs[
+                    TrackedPlayerAlertConfig.configKey(prof.userId, state.selectedProfileMode)
+                ]
+            },
+            defaultTrackedTopPlayLimit = state.defaultTrackedTopPlayLimit,
+            onConfigureTrackedAlerts = { prof ->
+                trackedAlertsDialogProfile = prof
+            }
+        )
+    }
+
+    trackedAlertsDialogProfile?.let { targetProf ->
+        val mode = state.selectedProfileMode
+        val configKey = TrackedPlayerAlertConfig.configKey(targetProf.userId, mode)
+        val initialConfig = state.trackedAlertConfigs[configKey] ?: TrackedPlayerAlertConfig()
+        TrackedPlayerAlertsDialog(
+            username = targetProf.username,
+            mode = mode,
+            currentPp = targetProf.pp,
+            currentRank = targetProf.globalRank,
+            initialConfig = initialConfig,
+            defaultTopPlayLimit = state.defaultTrackedTopPlayLimit,
+            isAlreadyTracked = targetProf.isTrackedForPp,
+            onUntrack = if (targetProf.isTrackedForPp) {
+                {
+                    viewModel.toggleTrackFriendPp(targetProf)
+                    trackedAlertsDialogProfile = null
+                }
+            } else {
+                null
+            },
+            onSave = { updated ->
+                viewModel.saveTrackedPlayerAlertConfig(
+                    userId = targetProf.userId,
+                    mode = mode,
+                    config = updated,
+                    username = targetProf.username,
+                    avatarUrl = targetProf.avatarUrl
+                )
+                trackedAlertsDialogProfile = null
+            },
+            onDismiss = { trackedAlertsDialogProfile = null }
         )
     }
 
@@ -962,6 +1014,7 @@ fun ChatScreen(
                         val resolveBeatmapCb = remember(viewModel) { viewModel::resolveBeatmap }
                         val resolveUserProfileCb = remember(viewModel) { viewModel::resolveUserProfile }
                         val toggleAudioCb = remember(viewModel) { viewModel::toggleBeatmapAudio }
+                        val idleAudioState = remember { AudioPlaybackState() }
                         val openUserProfileCb = remember(viewModel) {
                             { profile: PlayerProfile ->
                                 val target = if (profile.userId > 0L) profile.userId.toString() else profile.username
@@ -1063,6 +1116,8 @@ fun ChatScreen(
                                 } else {
                                     null
                                 }
+                                val hasBeatmapEmbed = msg.beatmapUrls.isNotEmpty() ||
+                                    msg.inlineEmbeds.any { it is ChatInlineEmbed.Beatmap }
                                 item(key = msg.id, contentType = msgContentType) {
                                     MessageBubbleItem(
                                         message = msg,
@@ -1075,7 +1130,7 @@ fun ChatScreen(
                                         showAvatarColumn = !isDm,
                                         showSenderHeader = !msgOutgoing && !isDm,
                                         isGroupStart = isGroupStart,
-                                        audioState = state.audioState,
+                                        audioState = if (hasBeatmapEmbed) state.audioState else idleAudioState,
                                         resolveBeatmap = resolveBeatmapCb,
                                         resolveUserProfile = resolveUserProfileCb,
                                         onToggleAudio = toggleAudioCb,
@@ -2757,7 +2812,7 @@ private fun ChatInlineImagePreview(
             val request = remember(context, imageUrl, reloadKey) {
                 ImageRequest.Builder(context)
                     .data(imageUrl.trim())
-                    .addHeader("User-Agent", "OsuChat-Android/1.0")
+                    .addHeader("User-Agent", "OsuCompanion/${com.osuchat.app.BuildConfig.VERSION_NAME}")
                     .addHeader("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8")
                     .setParameter("retry", reloadKey, memoryCacheKey = null)
                     .apply {
@@ -2914,7 +2969,7 @@ private fun FullscreenImagePreviewDialog(
                     AsyncImage(
                         model = ImageRequest.Builder(context)
                             .data(imageUrl.trim())
-                            .addHeader("User-Agent", "OsuChat-Android/1.0")
+                            .addHeader("User-Agent", "OsuCompanion/${com.osuchat.app.BuildConfig.VERSION_NAME}")
                             .addHeader("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8")
                             .crossfade(true)
                             .build(),

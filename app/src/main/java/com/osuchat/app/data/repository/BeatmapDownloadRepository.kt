@@ -40,7 +40,7 @@ class BeatmapDownloadRepository @Inject constructor(
         private const val FALLBACK_MIRROR_BASE = "https://api.nerinyan.moe/d/"
         private const val BROWSER_USER_AGENT =
             "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
-        private const val DOWNLOAD_RELATIVE_SUBDIR = "osu-chat"
+        private const val DOWNLOAD_RELATIVE_SUBDIR = "OsuCompanion"
         private const val OSZ_MIME_TYPE = "application/octet-stream"
     }
 

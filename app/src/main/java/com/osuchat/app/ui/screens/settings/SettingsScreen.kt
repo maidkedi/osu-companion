@@ -9,6 +9,8 @@ import android.os.PowerManager
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -64,6 +66,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -89,6 +92,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -97,6 +101,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.osuchat.app.BuildConfig
+import com.osuchat.app.data.model.TrackedPlayerAlertConfig
 import com.osuchat.app.domain.model.AuthMode
 import com.osuchat.app.domain.model.ConnectionStatus
 import com.osuchat.app.domain.model.OfficialOsuChannels
@@ -117,6 +122,7 @@ import com.osuchat.app.ui.components.OsuSegmentedBar
 import com.osuchat.app.ui.components.PlayerAvatar
 import com.osuchat.app.ui.components.WallpaperCustomizerPanel
 import com.osuchat.app.ui.theme.LocalOsuSurfaces
+import com.osuchat.app.ui.theme.OsuMotion
 import com.osuchat.app.ui.theme.OsuRadius
 import com.osuchat.app.ui.theme.OsuSpacing
 import com.osuchat.app.ui.theme.StatusOnline
@@ -267,8 +273,8 @@ fun SettingsScreen(
                                 )
                                 Text(
                                     text = when (settings.authMode) {
-                                        AuthMode.OAUTH_V2 -> "osu! OAuth v2 + Bancho IRC"
-                                        AuthMode.IRC -> "Bancho IRC (irc.ppy.sh)"
+                                        AuthMode.OAUTH_V2 -> "osu! OAuth v2 + Bancho IRC (irc.ppy.sh:6667 TCP)"
+                                        AuthMode.IRC -> "Bancho IRC (irc.ppy.sh:6667 · unencrypted TCP)"
                                         AuthMode.NONE -> "Disconnected"
                                     },
                                     style = MaterialTheme.typography.bodySmall,
@@ -450,7 +456,7 @@ fun SettingsScreen(
 
                         val quickOfficialSuggestions = remember(settings.autoJoinChannels) {
                             val existing = settings.autoJoinChannels.map { it.lowercase() }.toSet()
-                            (OfficialOsuChannels.PRIORITY + listOf("#turkish", "#english", "#japanese"))
+                            (OfficialOsuChannels.PRIORITY + listOf("#english", "#japanese"))
                                 .distinct()
                                 .filter { it.lowercase() !in existing }
                                 .take(6)
@@ -709,6 +715,141 @@ fun SettingsScreen(
                                 viewModel.setNotificationPrefs(settings.notifyDirectMessages, it)
                             }
                         )
+                        SwitchRow(
+                            title = "Tracked player alerts",
+                            subtitle = "Custom PP or rank targets and new Top-N plays",
+                            checked = settings.trackedAlertsEnabled,
+                            onCheckedChange = viewModel::setTrackedAlertsEnabled
+                        )
+
+                        AnimatedVisibility(
+                            visible = settings.trackedAlertsEnabled,
+                            enter = OsuMotion.expandEnter(),
+                            exit = OsuMotion.expandExit()
+                        ) {
+                            var defaultTopInput by rememberSaveable(settings.defaultTrackedTopPlayLimit) {
+                                mutableStateOf(settings.defaultTrackedTopPlayLimit.toString())
+                            }
+                            val parsedTopLimit = defaultTopInput.trim().toIntOrNull()
+                            val topLimitError = if (
+                                parsedTopLimit == null ||
+                                parsedTopLimit !in TrackedPlayerAlertConfig.MIN_TOP_PLAY_LIMIT..TrackedPlayerAlertConfig.MAX_TOP_PLAY_LIMIT
+                            ) {
+                                "Enter a number from 1 to 100"
+                            } else {
+                                null
+                            }
+
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = OsuSpacing.xs),
+                                verticalArrangement = Arrangement.spacedBy(OsuSpacing.sm)
+                            ) {
+                                OutlinedTextField(
+                                    value = defaultTopInput,
+                                    onValueChange = { next ->
+                                        val digits = next.filter { it.isDigit() }.take(3)
+                                        defaultTopInput = digits
+                                        val parsed = digits.toIntOrNull()
+                                        if (parsed != null &&
+                                            parsed in TrackedPlayerAlertConfig.MIN_TOP_PLAY_LIMIT..TrackedPlayerAlertConfig.MAX_TOP_PLAY_LIMIT
+                                        ) {
+                                            viewModel.setDefaultTrackedTopPlayLimit(parsed)
+                                        }
+                                    },
+                                    label = { Text("Default top plays tracked (1–100)") },
+                                    singleLine = true,
+                                    isError = topLimitError != null,
+                                    textStyle = MaterialTheme.typography.bodyMedium.tnum(),
+                                    shape = controlShape,
+                                    keyboardOptions = KeyboardOptions(
+                                        keyboardType = KeyboardType.Number,
+                                        imeAction = ImeAction.Done
+                                    ),
+                                    supportingText = {
+                                        Text(
+                                            text = topLimitError ?: "Applies unless overridden per player",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = if (topLimitError != null) {
+                                                MaterialTheme.colorScheme.error
+                                            } else {
+                                                surfaces.textMuted
+                                            }
+                                        )
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+
+                                Column(verticalArrangement = Arrangement.spacedBy(OsuSpacing.xs)) {
+                                    Text(
+                                        text = "Check interval",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = surfaces.textSecondary
+                                    )
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(OsuSpacing.sm)
+                                    ) {
+                                        TrackedPlayerAlertConfig.INTERVAL_OPTIONS_MINUTES.forEach { intervalMins ->
+                                            val selected = settings.trackedAlertsIntervalMinutes == intervalMins
+                                            val bg by animateColorAsState(
+                                                targetValue = if (selected) {
+                                                    surfaces.accentSubtle
+                                                } else {
+                                                    MaterialTheme.colorScheme.surfaceContainerHigh
+                                                },
+                                                animationSpec = OsuMotion.colorSpec(),
+                                                label = "intervalBg"
+                                            )
+                                            val fg by animateColorAsState(
+                                                targetValue = if (selected) {
+                                                    MaterialTheme.colorScheme.primary
+                                                } else {
+                                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                                },
+                                                animationSpec = OsuMotion.colorSpec(),
+                                                label = "intervalFg"
+                                            )
+                                            val border by animateColorAsState(
+                                                targetValue = if (selected) {
+                                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.28f)
+                                                } else {
+                                                    MaterialTheme.colorScheme.outlineVariant
+                                                },
+                                                animationSpec = OsuMotion.colorSpec(),
+                                                label = "intervalBorder"
+                                            )
+                                            Surface(
+                                                shape = controlShape,
+                                                color = bg,
+                                                border = osuHairlineBorder(border),
+                                                tonalElevation = 0.dp,
+                                                shadowElevation = 0.dp,
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .height(44.dp)
+                                                    .clip(controlShape)
+                                                    .clickable(role = Role.Tab) {
+                                                        viewModel.setTrackedAlertsIntervalMinutes(intervalMins)
+                                                    }
+                                            ) {
+                                                Box(contentAlignment = Alignment.Center) {
+                                                    Text(
+                                                        text = "${intervalMins}m",
+                                                        style = MaterialTheme.typography.labelLarge.tnum(),
+                                                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                                                        color = fg,
+                                                        maxLines = 1,
+                                                        softWrap = false
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     OsuHairlineDivider()
@@ -1013,7 +1154,7 @@ fun SettingsScreen(
                             OutlinedButton(
                                 onClick = {
                                     val stamp = SimpleDateFormat("yyyyMMdd_HHmm", Locale.US).format(Date())
-                                    exportBackupLauncher.launch("osuchat_backup_$stamp.json")
+                                    exportBackupLauncher.launch("osucompanion-backup-$stamp.json")
                                 },
                                 enabled = !state.isBackupBusy,
                                 shape = controlShape,
@@ -1089,7 +1230,7 @@ fun SettingsScreen(
                             verticalArrangement = Arrangement.spacedBy(OsuSpacing.xxs)
                         ) {
                             Text(
-                                text = "osu! Companion",
+                                text = "OsuCompanion",
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.SemiBold,
                                 maxLines = 1,
@@ -1485,7 +1626,7 @@ private fun BanchoWidgetPreviewCard(
     val numFmt = remember { NumberFormat.getIntegerInstance(Locale.US) }
     val timeFmt = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
 
-    val displayUsername = if (!isLoggedIn || username.isBlank()) "osu! Companion" else username
+    val displayUsername = if (!isLoggedIn || username.isBlank()) "OsuCompanion" else username
     val globalRankText = if (!isLoggedIn) {
         if (compact && theme == WidgetTheme.NOTHING_OS) "SIGN IN" else if (compact) "Sign in" else "—"
     } else {
@@ -1596,7 +1737,7 @@ private fun BanchoWidgetPreviewCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = if (theme == WidgetTheme.NOTHING_OS && displayUsername == "osu! Companion") {
+                        text = if (theme == WidgetTheme.NOTHING_OS && displayUsername == "OsuCompanion") {
                             "BANCHO"
                         } else {
                             displayUsername

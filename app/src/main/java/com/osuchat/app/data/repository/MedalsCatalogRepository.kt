@@ -6,6 +6,7 @@ import com.google.gson.JsonElement
 import com.google.gson.JsonParser
 import com.google.gson.annotations.SerializedName
 import com.google.gson.reflect.TypeToken
+import com.osuchat.app.BuildConfig
 import com.osuchat.app.domain.model.OsuMedalCatalogItem
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
@@ -115,7 +116,7 @@ class MedalsCatalogRepository @Inject constructor(
             val request = Request.Builder()
                 .url(OSEKAI_MEDALS_URL)
                 .header("Accept", "application/json")
-                .header("User-Agent", "OsuChat-Android/1.0")
+                .header("User-Agent", "OsuCompanion/${BuildConfig.VERSION_NAME}")
                 .build()
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) return emptyList()

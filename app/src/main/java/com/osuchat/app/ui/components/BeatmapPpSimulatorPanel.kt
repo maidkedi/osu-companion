@@ -1,6 +1,8 @@
 package com.osuchat.app.ui.components
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,11 +11,15 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Remove
@@ -82,7 +88,8 @@ fun rememberRosuSimulationState(
     accuracyPercent: Double,
     nMisses: Int = 0,
     combo: Int? = null,
-    clockRate: Double? = null
+    clockRate: Double? = null,
+    isLazer: Boolean = true
 ): RosuSimState {
     val appContext = LocalContext.current.applicationContext
     val engine = remember(appContext) {
@@ -94,32 +101,33 @@ fun rememberRosuSimulationState(
     val safeCombo = combo?.takeIf { it > 0 }
     val safeRate = clockRate?.takeIf { it.isFinite() && it > 0.0 }?.coerceIn(0.5, 2.0)
 
-    val fallback = remember(meta, selectedMods, accuracyPercent, safeMisses, safeCombo, safeRate) {
+    val fallback = remember(meta, selectedMods, accuracyPercent, safeMisses, safeCombo, safeRate, isLazer) {
         OsuBeatmapCalculator.simulate(
             meta = meta,
             mods = selectedMods,
             accuracyPercent = accuracyPercent,
             nMisses = safeMisses,
             combo = safeCombo,
-            clockRate = safeRate
+            clockRate = safeRate,
+            isLazer = isLazer
         )
     }
 
     var retryTrigger by remember(meta.beatmapId) { mutableIntStateOf(0) }
-    var stats by remember(meta.beatmapId, selectedMods, accuracyPercent, safeMisses, safeCombo, safeRate) {
+    var stats by remember(meta.beatmapId, selectedMods, accuracyPercent, safeMisses, safeCombo, safeRate, isLazer) {
         mutableStateOf(fallback)
     }
-    var isCalculating by remember(meta.beatmapId, selectedMods, accuracyPercent, safeMisses, safeCombo, safeRate) {
+    var isCalculating by remember(meta.beatmapId, selectedMods, accuracyPercent, safeMisses, safeCombo, safeRate, isLazer) {
         mutableStateOf(meta.beatmapId > 0L)
     }
-    var calcError by remember(meta.beatmapId, selectedMods, accuracyPercent, safeMisses, safeCombo, safeRate) {
+    var calcError by remember(meta.beatmapId, selectedMods, accuracyPercent, safeMisses, safeCombo, safeRate, isLazer) {
         mutableStateOf<String?>(null)
     }
-    var canRetry by remember(meta.beatmapId, selectedMods, accuracyPercent, safeMisses, safeCombo, safeRate) {
+    var canRetry by remember(meta.beatmapId, selectedMods, accuracyPercent, safeMisses, safeCombo, safeRate, isLazer) {
         mutableStateOf(false)
     }
 
-    LaunchedEffect(meta.beatmapId, meta.mode, selectedMods, accuracyPercent, safeMisses, safeCombo, safeRate, retryTrigger) {
+    LaunchedEffect(meta.beatmapId, meta.mode, selectedMods, accuracyPercent, safeMisses, safeCombo, safeRate, isLazer, retryTrigger) {
         stats = fallback
         if (meta.beatmapId <= 0L) {
             isCalculating = false
@@ -140,7 +148,8 @@ fun rememberRosuSimulationState(
                     accuracyPercent = accuracyPercent,
                     nMisses = safeMisses,
                     combo = safeCombo,
-                    clockRate = safeRate
+                    clockRate = safeRate,
+                    isLazer = isLazer
                 )
             )
         } catch (ce: CancellationException) {
@@ -187,7 +196,8 @@ fun rememberRosuSimulatedStats(
     accuracyPercent: Double,
     nMisses: Int = 0,
     combo: Int? = null,
-    clockRate: Double? = null
+    clockRate: Double? = null,
+    isLazer: Boolean = true
 ): Pair<SimulatedBeatmapStats, Boolean> {
     val state = rememberRosuSimulationState(
         meta = meta,
@@ -195,7 +205,8 @@ fun rememberRosuSimulatedStats(
         accuracyPercent = accuracyPercent,
         nMisses = nMisses,
         combo = combo,
-        clockRate = clockRate
+        clockRate = clockRate,
+        isLazer = isLazer
     )
     return state.stats to state.isCalculating
 }
@@ -226,13 +237,16 @@ fun BeatmapPpSimulatorPanel(
     onComboChange: (Int?) -> Unit = {},
     clockRate: Double? = null,
     onClockRateChange: (Double?) -> Unit = {},
+    isLazer: Boolean = true,
+    onLazerChange: (Boolean) -> Unit = {},
     simState: RosuSimState = rememberRosuSimulationState(
         meta = meta,
         selectedMods = selectedMods,
         accuracyPercent = accuracyPercent,
         nMisses = nMisses,
         combo = combo,
-        clockRate = clockRate
+        clockRate = clockRate,
+        isLazer = isLazer
     ),
     modifier: Modifier = Modifier
 ) {
@@ -276,11 +290,12 @@ fun BeatmapPpSimulatorPanel(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
+                    val rulesetLabel = if (isLazer) "Lazer" else "Classic"
                     Text(
                         text = when {
-                            simState.isCalculating -> "Calculating rosu-pp…"
-                            sim.isExactRosuPp -> "rosu-pp exact"
-                            else -> "Offline estimate"
+                            simState.isCalculating -> "Calculating rosu-pp ($rulesetLabel)…"
+                            sim.isExactRosuPp -> "rosu-pp exact · $rulesetLabel"
+                            else -> "Offline estimate · $rulesetLabel"
                         },
                         style = MaterialTheme.typography.labelSmall,
                         color = if (sim.isExactRosuPp && !simState.isCalculating) {
@@ -358,6 +373,54 @@ fun BeatmapPpSimulatorPanel(
             }
 
             OsuHairlineDivider()
+
+            // Equal-width 2-column segmented selector: Lazer vs Classic (CL)
+            Surface(
+                shape = chipShape,
+                color = MaterialTheme.colorScheme.surfaceContainer,
+                border = osuHairlineBorder(),
+                tonalElevation = 0.dp,
+                shadowElevation = 0.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(40.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(OsuSpacing.xs),
+                    horizontalArrangement = Arrangement.spacedBy(OsuSpacing.xs),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val segmentInnerShape = RoundedCornerShape(OsuRadius.sm)
+                    listOf(true to "Lazer", false to "Classic").forEach { (optionIsLazer, label) ->
+                        val selected = isLazer == optionIsLazer
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .clip(segmentInnerShape)
+                                .background(if (selected) surfaces.accentSubtle else Color.Transparent)
+                                .clickable(role = Role.Tab) { onLazerChange(optionIsLazer) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = label,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                                color = if (selected) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
 
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(OsuSpacing.sm),

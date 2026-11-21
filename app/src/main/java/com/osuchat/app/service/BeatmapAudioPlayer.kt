@@ -68,7 +68,7 @@ class BeatmapAudioPlayer @Inject constructor(
 
     private var queueTracks: List<AudioQueueTrack> = emptyList()
     private var currentQueueIndex: Int = -1
-    private var autoAdvanceEnabled: Boolean = true
+    private var autoAdvanceEnabled: Boolean = false
 
     private var audioFocusRequest: AudioFocusRequest? = null
     private var hasAudioFocus: Boolean = false
@@ -188,7 +188,7 @@ class BeatmapAudioPlayer @Inject constructor(
     fun playQueue(
         tracks: List<AudioQueueTrack>,
         startIndex: Int = 0,
-        autoAdvance: Boolean = true
+        autoAdvance: Boolean = false
     ) {
         val validTracks = tracks.filter { it.beatmapsetId > 0L }
         if (validTracks.isEmpty()) {
@@ -470,24 +470,7 @@ class BeatmapAudioPlayer @Inject constructor(
             setOnCompletionListener { mp ->
                 synchronized(playerLock) {
                     if (mediaPlayer !== mp || playerGeneration != generation) return@setOnCompletionListener
-                    cancelTickerLocked()
-                    val nextIndex = currentQueueIndex + 1
-                    if (autoAdvanceEnabled && queueTracks.isNotEmpty() && nextIndex < queueTracks.size) {
-                        currentQueueIndex = nextIndex
-                        val nextTrack = queueTracks[nextIndex]
-                        playNewLocked(nextTrack.beatmapsetId, nextTrack.previewAudioUrl)
-                        return@setOnCompletionListener
-                    }
-                    unregisterNoisyReceiverLocked()
-                    abandonAudioFocusLocked()
-                    playerState = PlayerState.COMPLETED
-                    _state.value = buildStateLocked(
-                        beatmapsetId = beatmapsetId,
-                        isPlaying = false,
-                        isPreparing = false,
-                        progress = 0f,
-                        error = null
-                    )
+                    stopLocked()
                 }
             }
             setOnErrorListener { mp, _, _ ->

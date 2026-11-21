@@ -1,5 +1,6 @@
 package com.osuchat.app
 
+import com.osuchat.app.data.irc.BanchoIrcClient
 import com.osuchat.app.data.irc.IrcEvent
 import com.osuchat.app.data.irc.IrcParser
 import org.junit.Assert.assertEquals
@@ -219,5 +220,38 @@ class IrcParserTest {
 
         // Unhandled numeric returns null cleanly
         assertNull(IrcParser.toIrcEvent(":cho.ppy.sh 376 mynick :End of /MOTD command."))
+    }
+
+    @Test
+    fun banchoIrcClientSanitizers_neutralizeCrlfNullAndSpaceInjections() {
+        assertEquals(
+            "PRIVMSG #osu :helloPRIVMSG BanchoBot :evil",
+            BanchoIrcClient.sanitizeRawIrcLine("PRIVMSG #osu :hello\r\nPRIVMSG BanchoBot :evil\u0000")
+        )
+
+        assertEquals(
+            "#osujoin#other",
+            BanchoIrcClient.normalizeChannelName("  #OSU\r\nJOIN #other\u0000 ")
+        )
+        assertNull(BanchoIrcClient.normalizeChannelName("   ###\r\n  "))
+
+        assertEquals(
+            "#mp_1234privmsg#osu",
+            BanchoIrcClient.sanitizePrivMsgTarget("#mp_1234 PRIVMSG #osu\r\n")
+        )
+        assertEquals(
+            "Bancho_BotPRIVMSG_#osu",
+            BanchoIrcClient.sanitizePrivMsgTarget("Bancho Bot\r\nPRIVMSG #osu\u0000")
+        )
+        assertNull(BanchoIrcClient.sanitizePrivMsgTarget("  \r\n\u0000  "))
+
+        assertEquals(
+            "Player_OneQUIT",
+            BanchoIrcClient.sanitizeIrcNick(" Player One\r\nQUIT\u0000 ")
+        )
+        assertEquals(
+            "secret_passPASS_evil",
+            BanchoIrcClient.sanitizeIrcPassword(" secret_pass\r\nPASS_evil\u0000 ")
+        )
     }
 }

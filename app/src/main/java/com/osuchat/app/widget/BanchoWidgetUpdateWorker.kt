@@ -37,6 +37,7 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.time.LocalDate
+import java.time.ZoneOffset
 import java.util.Locale
 
 class BanchoWidgetUpdateWorker(
@@ -132,7 +133,7 @@ class BanchoWidgetUpdateWorker(
                     val mode = me.playmode?.trim()?.lowercase(Locale.US)
                         ?.takeIf { it in VALID_OSU_MODES } ?: "osu"
                     if (globalRank > 0 || pp > 0.0) {
-                        val today = LocalDate.now()
+                        val today = LocalDate.now(ZoneOffset.UTC)
                         val historyDao = entryPoint.profileHistoryDao()
                         suspendRunCatching {
                             historyDao.upsertSnapshot(

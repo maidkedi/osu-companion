@@ -1497,7 +1497,7 @@ private fun BeatmapsExploreTab(
                                     )
                                     Row(
                                         modifier = Modifier
-                                            .heightIn(min = 32.dp)
+                                            .heightIn(min = 36.dp)
                                             .clip(diffShape)
                                             .background(bgColor)
                                             .border(OsuRadius.hairline, borderColor, diffShape)
@@ -1678,7 +1678,8 @@ internal fun BeatmapStatsBottomSheet(
     onDownloadOsz: () -> Unit = {},
     onShareOsz: (Context) -> Unit = {},
     hasActiveMpLobby: Boolean = false,
-    onSelectForMp: ((beatmapId: Long, modeInt: Int) -> Unit)? = null
+    onSelectForMp: ((beatmapId: Long, modeInt: Int) -> Unit)? = null,
+    initialIsLazer: Boolean = true
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val context = LocalContext.current
@@ -1699,6 +1700,7 @@ internal fun BeatmapStatsBottomSheet(
     var nMisses by remember(targetBeatmapId) { mutableIntStateOf(0) }
     var customCombo by remember(targetBeatmapId) { mutableStateOf<Int?>(null) }
     var customClockRate by remember(targetBeatmapId) { mutableStateOf<Double?>(null) }
+    var isLazerMode by remember(targetBeatmapId, initialIsLazer) { mutableStateOf(initialIsLazer) }
 
     val rosuEngine = remember(context) {
         EntryPointAccessors.fromApplication(
@@ -1940,7 +1942,8 @@ internal fun BeatmapStatsBottomSheet(
                         accuracyPercent = accuracyPercent,
                         nMisses = nMisses,
                         combo = customCombo,
-                        clockRate = customClockRate
+                        clockRate = customClockRate,
+                        isLazer = isLazerMode
                     )
                     val sim = simState.stats
                     val hasMods = selectedMods.isNotEmpty()
@@ -1964,6 +1967,7 @@ internal fun BeatmapStatsBottomSheet(
                             nMisses = 0
                             customCombo = null
                             customClockRate = null
+                            isLazerMode = initialIsLazer
                         },
                         nMisses = nMisses,
                         onMissesChange = { nMisses = it.coerceAtLeast(0) },
@@ -1971,6 +1975,8 @@ internal fun BeatmapStatsBottomSheet(
                         onComboChange = { customCombo = it },
                         clockRate = customClockRate,
                         onClockRateChange = { customClockRate = it },
+                        isLazer = isLazerMode,
+                        onLazerChange = { isLazerMode = it },
                         simState = simState
                     )
 
@@ -2353,6 +2359,8 @@ private fun BeatmapDiffspikeGraphCard(
                 val graphBg = MaterialTheme.colorScheme.surfaceContainer
                 val peakColor = MaterialTheme.colorScheme.primary
                 val buckets = profile.buckets
+                val reusableLinePath = remember { Path() }
+                val reusableAreaPath = remember { Path() }
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -2386,8 +2394,8 @@ private fun BeatmapDiffspikeGraphCard(
                             }
                         }
 
-                        val linePath = Path()
-                        val areaPath = Path()
+                        val linePath = reusableLinePath.apply { rewind() }
+                        val areaPath = reusableAreaPath.apply { rewind() }
                         val stepX = w / (buckets.size - 1).coerceAtLeast(1).toFloat()
                         fun safeNorm(v: Float): Float = if (v.isFinite()) v.coerceIn(0f, 1f) else 0f
 
@@ -2523,8 +2531,13 @@ private fun BeatmapLeaderboardRow(
     val playerName = score.username.ifBlank { "Player" }
     val flag = countryCodeToFlagEmoji(score.userCountryCode)
     val playerLabel = if (flag.isNotEmpty()) "$flag $playerName" else playerName
-    val mods = score.modsLabel.ifBlank { "NM" }
-    val detailsLine = "$mods • ${String.format(Locale.US, "%.2f%%", score.accuracy)} • ${numFmt.format(score.maxCombo)}x • ${numFmt.format(score.score)}"
+    val gameplayMods = score.gameplayModsLabel
+    val detailsLine = listOfNotNull(
+        gameplayMods.takeIf { it.isNotEmpty() },
+        String.format(Locale.US, "%.2f%%", score.accuracy),
+        "${numFmt.format(score.maxCombo)}x",
+        numFmt.format(score.score)
+    ).joinToString(" • ")
 
     Row(
         modifier = Modifier
@@ -2549,13 +2562,32 @@ private fun BeatmapLeaderboardRow(
         )
         Spacer(Modifier.width(OsuSpacing.sm))
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = playerLabel,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(OsuSpacing.xs)
+            ) {
+                Text(
+                    text = playerLabel,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                OsuMicroTag(
+                    text = score.clientBadgeLabel,
+                    containerColor = if (score.isLazer) {
+                        surfaces.accentSubtle
+                    } else {
+                        MaterialTheme.colorScheme.surfaceContainerHigh
+                    },
+                    contentColor = if (score.isLazer) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+                )
+            }
             Text(
                 text = detailsLine,
                 style = MaterialTheme.typography.labelSmall.tnum(),
@@ -2846,7 +2878,11 @@ private fun RankingsAndSearchTab(
                                 } else {
                                     Icons.Rounded.NotificationsNone
                                 },
-                                contentDescription = "Track Top 5 PP Plays",
+                                contentDescription = if (player.isTrackedForPp) {
+                                    "Stop tracking player"
+                                } else {
+                                    "Track player"
+                                },
                                 tint = trackTint
                             )
                         }
@@ -3916,7 +3952,7 @@ private fun PlayLaterQueueTab(
         } else {
             itemsIndexed(
                 items = savedBeatmaps,
-                key = { idx, item -> "saved_${idx}_${item.beatmapId}" },
+                key = { _, item -> "saved_${item.beatmapId}" },
                 contentType = { _, _ -> "saved_beatmap_row" }
             ) { index, item ->
                 val isThisAudio = audioState.beatmapsetId == item.beatmapsetId

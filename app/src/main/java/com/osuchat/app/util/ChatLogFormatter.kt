@@ -36,7 +36,7 @@ object ChatLogFormatter {
         val fileStamp = DateTimeFormatter.ofPattern("yyyyMMdd_HHmm", Locale.US)
             .withZone(zoneId)
             .format(Instant.ofEpochMilli(timestampMillis))
-        return "osuchat_${sanitized}_${fileStamp}.${format.extension}"
+        return "osucompanion_${sanitized}_${fileStamp}.${format.extension}"
     }
 
     fun format(
@@ -56,7 +56,7 @@ object ChatLogFormatter {
         val sb = StringBuilder()
         when (format) {
             ChatLogExportFormat.PLAIN_TEXT -> {
-                sb.appendLine("osu! Companion Chat Log")
+                sb.appendLine("OsuCompanion Chat Log")
                 sb.appendLine("Channel: $displayChannel")
                 sb.appendLine("Exported: $exportedAt")
                 sb.appendLine("Messages: ${messages.size}")

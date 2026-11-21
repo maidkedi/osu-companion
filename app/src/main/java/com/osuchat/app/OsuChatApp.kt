@@ -41,6 +41,7 @@ class OsuChatApp : Application(), DefaultLifecycleObserver {
 
     override fun onStop(owner: LifecycleOwner) {
         chatRepository.setAppInForeground(false)
+        beatmapAudioPlayer.stop()
         rosuPpEngine.destroy()
     }
 

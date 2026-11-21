@@ -4,6 +4,7 @@ import androidx.compose.runtime.Immutable
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.osuchat.app.data.model.TrackedPlayerAlertConfig
 import com.osuchat.app.domain.model.AppSettings
 import com.osuchat.app.domain.model.AuthMode
 import com.osuchat.app.domain.model.BeatmapMetadata
@@ -96,7 +97,9 @@ data class MatchAnalyzerUiState(
     val selectedProfileOsuTrack: List<OsuTrackPoint> = emptyList(),
     val isSelectedProfileOsuTrackLoading: Boolean = false,
     val selectedBeatmapSet: BeatmapSetSearchResult? = null,
-    val savedBeatmapIds: Set<Long> = emptySet()
+    val savedBeatmapIds: Set<Long> = emptySet(),
+    val trackedAlertConfigs: Map<String, TrackedPlayerAlertConfig> = emptyMap(),
+    val defaultTrackedTopPlayLimit: Int = TrackedPlayerAlertConfig.DEFAULT_TOP_PLAY_LIMIT
 )
 
 sealed class MatchAnalyzerEffect {
@@ -128,8 +131,9 @@ class MatchAnalyzerViewModel @Inject constructor(
     val uiState: StateFlow<MatchAnalyzerUiState> = combine(
         localState,
         chatRepository.settings,
-        chatRepository.savedBeatmaps.map { items -> items.map { it.beatmapId }.toSet() }
-    ) { local, settings, savedIds ->
+        chatRepository.savedBeatmaps.map { items -> items.map { it.beatmapId }.toSet() },
+        chatRepository.trackedAlertConfigs
+    ) { local, settings, savedIds, trackedAlertConfigs ->
         val report = local.report
         val computed = report?.let {
             MatchAnalyzerCalculator.compute(it, local.warmupGameIds)
@@ -159,7 +163,9 @@ class MatchAnalyzerViewModel @Inject constructor(
             selectedProfileOsuTrack = local.selectedProfileOsuTrack,
             isSelectedProfileOsuTrackLoading = local.isSelectedProfileOsuTrackLoading,
             selectedBeatmapSet = local.selectedBeatmapSet,
-            savedBeatmapIds = savedIds
+            savedBeatmapIds = savedIds,
+            trackedAlertConfigs = trackedAlertConfigs,
+            defaultTrackedTopPlayLimit = settings.defaultTrackedTopPlayLimit
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), MatchAnalyzerUiState(matchId = matchId))
 
@@ -601,7 +607,54 @@ class MatchAnalyzerViewModel @Inject constructor(
                             it.copy(selectedProfile = cur.copy(isTrackedForPp = tracked))
                         } else it
                     }
+                    _effects.emit(
+                        MatchAnalyzerEffect.ShowMessage(
+                            if (tracked) {
+                                "Tracking alerts enabled for ${profile.username}"
+                            } else {
+                                "Stopped tracking ${profile.username}"
+                            }
+                        )
+                    )
                 }
+        }
+    }
+
+    fun saveTrackedPlayerAlertConfig(
+        userId: Long,
+        mode: String,
+        config: TrackedPlayerAlertConfig,
+        username: String = "",
+        avatarUrl: String = ""
+    ) {
+        viewModelScope.launch {
+            chatRepository.saveTrackedPlayerAlertConfig(
+                userId = userId,
+                mode = mode,
+                config = config,
+                username = username,
+                avatarUrl = avatarUrl
+            )
+            localState.update {
+                val cur = it.selectedProfile
+                if (cur != null &&
+                    ((userId > 0L && cur.userId == userId) ||
+                        (username.isNotBlank() && cur.username.equals(username, ignoreCase = true)))
+                ) {
+                    it.copy(selectedProfile = cur.copy(isTrackedForPp = true))
+                } else {
+                    it
+                }
+            }
+            _effects.emit(
+                MatchAnalyzerEffect.ShowMessage(
+                    if (username.isNotBlank()) {
+                        "Tracking rules saved for $username"
+                    } else {
+                        "Tracked player alert rules saved"
+                    }
+                )
+            )
         }
     }
 

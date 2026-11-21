@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Login
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.rounded.Add
@@ -357,7 +358,13 @@ fun MultiplayerHubSection(
                                     )
                                 }
                                 Spacer(Modifier.width(OsuSpacing.xs))
-                                Text("Create lobby", style = MaterialTheme.typography.labelLarge)
+                                Text(
+                                    text = "Create lobby",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis
+                                )
                             }
                         } else {
                             TextButton(
@@ -392,15 +399,20 @@ fun MultiplayerHubSection(
                                 shape = controlShape,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(44.dp)
+                                    .height(46.dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.Rounded.Tune,
                                     contentDescription = null,
-                                    modifier = Modifier.size(16.dp)
+                                    modifier = Modifier.size(18.dp)
                                 )
                                 Spacer(Modifier.width(OsuSpacing.sm))
-                                Text("Match setup wizard")
+                                Text(
+                                    text = "Match setup wizard",
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis
+                                )
                             }
 
                             if (activeLobby != null) {
@@ -422,47 +434,81 @@ fun MultiplayerHubSection(
                                         Icon(
                                             imageVector = Icons.Rounded.Add,
                                             contentDescription = null,
-                                            modifier = Modifier.size(16.dp)
+                                            modifier = Modifier.size(18.dp)
                                         )
                                     }
                                     Spacer(Modifier.width(OsuSpacing.sm))
-                                    Text("Create new lobby")
+                                    Text(
+                                        text = "Create new lobby",
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
                                 }
                             }
+
+                            val parsedMatchId = remember(joinInput) {
+                                MpLobbyParser.extractMatchId(joinInput)
+                            }
+                            OutlinedTextField(
+                                value = joinInput,
+                                onValueChange = { joinInput = it },
+                                placeholder = {
+                                    Text(
+                                        text = "Match ID or URL",
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                },
+                                trailingIcon = {
+                                    if (joinInput.isNotEmpty()) {
+                                        IconButton(onClick = { joinInput = "" }) {
+                                            Icon(
+                                                Icons.Rounded.Close,
+                                                contentDescription = "Clear match input",
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                    }
+                                },
+                                singleLine = true,
+                                textStyle = MaterialTheme.typography.bodyMedium,
+                                shape = controlShape,
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
+                                keyboardActions = KeyboardActions(onGo = { submitJoin() }),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 52.dp)
+                            )
 
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(OsuSpacing.sm)
                             ) {
-                                OutlinedTextField(
-                                    value = joinInput,
-                                    onValueChange = { joinInput = it },
-                                    placeholder = { Text("Match ID or URL") },
-                                    trailingIcon = {
-                                        if (joinInput.isNotEmpty()) {
-                                            IconButton(onClick = { joinInput = "" }) {
-                                                Icon(Icons.Rounded.Close, contentDescription = "Clear match input", modifier = Modifier.size(18.dp))
-                                            }
-                                        }
-                                    },
-                                    singleLine = true,
-                                    shape = controlShape,
-                                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
-                                    keyboardActions = KeyboardActions(onGo = { submitJoin() }),
-                                    modifier = Modifier.weight(1f)
-                                )
-                                val parsedMatchId = remember(joinInput) {
-                                    MpLobbyParser.extractMatchId(joinInput)
-                                }
                                 OutlinedButton(
                                     onClick = submitJoin,
                                     enabled = joinInput.isNotBlank() && !isBusy,
                                     shape = controlShape,
                                     border = osuHairlineBorder(),
-                                    modifier = Modifier.heightIn(min = 48.dp)
+                                    contentPadding = PaddingValues(horizontal = OsuSpacing.md),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(44.dp)
                                 ) {
-                                    Text("Join")
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Rounded.Login,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(Modifier.width(OsuSpacing.xs))
+                                    Text(
+                                        text = "Join",
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
                                 }
                                 OutlinedButton(
                                     onClick = {
@@ -475,15 +521,22 @@ fun MultiplayerHubSection(
                                     shape = controlShape,
                                     border = osuHairlineBorder(),
                                     contentPadding = PaddingValues(horizontal = OsuSpacing.md),
-                                    modifier = Modifier.heightIn(min = 48.dp)
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(44.dp)
                                 ) {
                                     Icon(
                                         imageVector = Icons.Rounded.Analytics,
-                                        contentDescription = "Analyze MP Link / ID",
-                                        modifier = Modifier.size(16.dp)
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
                                     )
                                     Spacer(Modifier.width(OsuSpacing.xs))
-                                    Text("Analyze")
+                                    Text(
+                                        text = "Analyze",
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
                                 }
                             }
                         }
@@ -521,9 +574,7 @@ fun MultiplayerHubSection(
                     OsuEmptyState(
                         icon = Icons.Rounded.Groups,
                         title = "No active multiplayer lobby",
-                        subtitle = "Create a lobby or join an existing match by ID or URL above",
-                        secondaryActionLabel = "Create lobby",
-                        onSecondaryAction = { showCreateDialog = true }
+                        subtitle = "Use the match setup wizard or join a match by ID or URL above"
                     )
                 }
             }

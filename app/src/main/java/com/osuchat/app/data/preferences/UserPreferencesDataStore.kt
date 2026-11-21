@@ -16,6 +16,7 @@ import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import com.osuchat.app.data.model.TrackedPlayerAlertConfig
 import com.osuchat.app.domain.model.AppSettings
 import com.osuchat.app.domain.model.AuthMode
 import com.osuchat.app.domain.model.BackupPreferencesDto
@@ -58,53 +59,75 @@ internal object CredentialCipher {
     private const val IV_BYTES = 12
     private const val TAG_BITS = 128
 
+    @Volatile
+    private var cachedKeystoreKey: SecretKey? = null
+
     fun isEncrypted(value: String): Boolean = value.startsWith(ENCRYPTED_PREFIX)
 
     fun encrypt(plaintext: String, keyOverride: SecretKey? = null): String {
         if (plaintext.isEmpty() || isEncrypted(plaintext)) return plaintext
-        val key = keyOverride ?: getOrCreateKeystoreKey() ?: return plaintext
-        return runCatching {
-            val cipher = Cipher.getInstance(TRANSFORMATION)
-            cipher.init(Cipher.ENCRYPT_MODE, key)
-            val iv = cipher.iv
-            val ciphertext = cipher.doFinal(plaintext.toByteArray(Charsets.UTF_8))
-            val combined = ByteArray(iv.size + ciphertext.size)
-            System.arraycopy(iv, 0, combined, 0, iv.size)
-            System.arraycopy(ciphertext, 0, combined, iv.size, ciphertext.size)
-            ENCRYPTED_PREFIX + Base64.getEncoder().encodeToString(combined)
-        }.getOrDefault(plaintext)
+        val firstKey = keyOverride ?: getOrCreateKeystoreKey() ?: return plaintext
+        encryptWithKey(plaintext, firstKey)?.let { return it }
+        if (keyOverride != null) return plaintext
+        val reloadedKey = getOrCreateKeystoreKey(forceReload = true) ?: return plaintext
+        return encryptWithKey(plaintext, reloadedKey) ?: plaintext
     }
 
     fun decrypt(stored: String, keyOverride: SecretKey? = null): String? {
         if (!isEncrypted(stored)) return stored
-        val key = keyOverride ?: getOrCreateKeystoreKey() ?: return null
-        return runCatching {
-            val payload = Base64.getDecoder().decode(stored.removePrefix(ENCRYPTED_PREFIX))
-            if (payload.size <= IV_BYTES) return null
-            val iv = payload.copyOfRange(0, IV_BYTES)
-            val ciphertext = payload.copyOfRange(IV_BYTES, payload.size)
-            val cipher = Cipher.getInstance(TRANSFORMATION)
-            cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(TAG_BITS, iv))
-            String(cipher.doFinal(ciphertext), Charsets.UTF_8)
-        }.getOrNull()
+        val firstKey = keyOverride ?: getOrCreateKeystoreKey() ?: return null
+        decryptWithKey(stored, firstKey)?.let { return it }
+        if (keyOverride != null) return null
+        val reloadedKey = getOrCreateKeystoreKey(forceReload = true) ?: return null
+        return decryptWithKey(stored, reloadedKey)
     }
 
-    @Synchronized
-    private fun getOrCreateKeystoreKey(): SecretKey? = runCatching {
-        val keyStore = KeyStore.getInstance(KEYSTORE_PROVIDER).apply { load(null) }
-        (keyStore.getKey(KEY_ALIAS, null) as? SecretKey)?.let { return@runCatching it }
-        val keyGenerator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, KEYSTORE_PROVIDER)
-        val spec = KeyGenParameterSpec.Builder(
-            KEY_ALIAS,
-            KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
-        )
-            .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-            .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-            .setKeySize(256)
-            .build()
-        keyGenerator.init(spec)
-        keyGenerator.generateKey()
+    private fun encryptWithKey(plaintext: String, key: SecretKey): String? = runCatching {
+        val cipher = Cipher.getInstance(TRANSFORMATION)
+        cipher.init(Cipher.ENCRYPT_MODE, key)
+        val iv = cipher.iv
+        val ciphertext = cipher.doFinal(plaintext.toByteArray(Charsets.UTF_8))
+        val combined = ByteArray(iv.size + ciphertext.size)
+        System.arraycopy(iv, 0, combined, 0, iv.size)
+        System.arraycopy(ciphertext, 0, combined, iv.size, ciphertext.size)
+        ENCRYPTED_PREFIX + Base64.getEncoder().encodeToString(combined)
     }.getOrNull()
+
+    private fun decryptWithKey(stored: String, key: SecretKey): String? = runCatching {
+        val payload = Base64.getDecoder().decode(stored.removePrefix(ENCRYPTED_PREFIX))
+        if (payload.size <= IV_BYTES) return@runCatching null
+        val iv = payload.copyOfRange(0, IV_BYTES)
+        val ciphertext = payload.copyOfRange(IV_BYTES, payload.size)
+        val cipher = Cipher.getInstance(TRANSFORMATION)
+        cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(TAG_BITS, iv))
+        String(cipher.doFinal(ciphertext), Charsets.UTF_8)
+    }.getOrNull()
+
+    @Synchronized
+    private fun getOrCreateKeystoreKey(forceReload: Boolean = false): SecretKey? {
+        if (!forceReload) {
+            cachedKeystoreKey?.let { return it }
+        } else {
+            cachedKeystoreKey = null
+        }
+        val key = runCatching {
+            val keyStore = KeyStore.getInstance(KEYSTORE_PROVIDER).apply { load(null) }
+            (keyStore.getKey(KEY_ALIAS, null) as? SecretKey)?.let { return@runCatching it }
+            val keyGenerator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, KEYSTORE_PROVIDER)
+            val spec = KeyGenParameterSpec.Builder(
+                KEY_ALIAS,
+                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
+            )
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setKeySize(256)
+                .build()
+            keyGenerator.init(spec)
+            keyGenerator.generateKey()
+        }.getOrNull()
+        cachedKeystoreKey = key
+        return key
+    }
 }
 
 data class OAuthTokenData(
@@ -144,9 +167,14 @@ class UserPreferencesDataStore @Inject constructor(
 ) : OAuthTokenStore {
     private val store = context.dataStore
     private val explicitDisconnectCache = AtomicReference<Boolean?>(null)
+    @Volatile
+    private var cachedOAuthTokens: OAuthTokenData? = null
+    @Volatile
+    private var oauthTokensCacheLoaded: Boolean = false
     private val macroGson = Gson()
     private val macroListType = object : TypeToken<List<RefereeMacro>>() {}.type
     private val matchTemplateListType = object : TypeToken<List<MatchSetupTemplate>>() {}.type
+    private val trackedAlertConfigMapType = object : TypeToken<Map<String, TrackedPlayerAlertConfig>>() {}.type
 
     private object Keys {
         val AUTH_MODE = stringPreferencesKey("auth_mode")
@@ -208,6 +236,10 @@ class UserPreferencesDataStore @Inject constructor(
         val IGNORE_DISPLAY_MODE = stringPreferencesKey("ignore_display_mode")
         val LAST_UPDATE_CHECK_AT = longPreferencesKey("last_update_check_at")
         val SKIPPED_UPDATE_VERSION = stringPreferencesKey("skipped_update_version")
+        val TRACKED_ALERTS_ENABLED = booleanPreferencesKey("tracked_alerts_enabled")
+        val TRACKED_ALERTS_INTERVAL_MINUTES = intPreferencesKey("tracked_alerts_interval_minutes")
+        val DEFAULT_TRACKED_TOP_PLAY_LIMIT = intPreferencesKey("default_tracked_top_play_limit")
+        val TRACKED_PLAYER_ALERT_CONFIGS_JSON = stringPreferencesKey("tracked_player_alert_configs_json")
     }
 
     val refereeMacrosFlow: Flow<List<RefereeMacro>> = store.data.map { prefs ->
@@ -268,6 +300,10 @@ class UserPreferencesDataStore @Inject constructor(
             ?.uppercase(Locale.ROOT)
             ?.takeIf { it == "HIDE" || it == "COLLAPSE" }
             ?: "HIDE"
+    }.distinctUntilChanged()
+
+    val trackedAlertConfigsFlow: Flow<Map<String, TrackedPlayerAlertConfig>> = store.data.map { prefs ->
+        parseTrackedAlertConfigs(prefs[Keys.TRACKED_PLAYER_ALERT_CONFIGS_JSON])
     }.distinctUntilChanged()
 
     val settingsFlow: Flow<AppSettings> = store.data.map { prefs ->
@@ -348,7 +384,14 @@ class UserPreferencesDataStore @Inject constructor(
             autoJoinChannels = autoJoinChannels,
             isExplicitlyDisconnected = explicitlyDisconnected,
             ignoredUsers = ignoredUsers,
-            ignoreDisplayMode = ignoreDisplayMode
+            ignoreDisplayMode = ignoreDisplayMode,
+            trackedAlertsEnabled = prefs[Keys.TRACKED_ALERTS_ENABLED] ?: true,
+            trackedAlertsIntervalMinutes = TrackedPlayerAlertConfig.clampIntervalMinutes(
+                prefs[Keys.TRACKED_ALERTS_INTERVAL_MINUTES] ?: TrackedPlayerAlertConfig.DEFAULT_INTERVAL_MINUTES
+            ),
+            defaultTrackedTopPlayLimit = TrackedPlayerAlertConfig.clampTopPlayLimit(
+                prefs[Keys.DEFAULT_TRACKED_TOP_PLAY_LIMIT] ?: TrackedPlayerAlertConfig.DEFAULT_TOP_PLAY_LIMIT
+            )
         )
     }
 
@@ -478,6 +521,8 @@ class UserPreferencesDataStore @Inject constructor(
             prefs[Keys.EXPLICITLY_DISCONNECTED] = false
         }
         explicitDisconnectCache.set(false)
+        cachedOAuthTokens = OAuthTokenData(accessToken, refreshToken, expiresAtMillis)
+        oauthTokensCacheLoaded = true
     }
 
     override suspend fun updateOAuthTokens(accessToken: String, refreshToken: String, expiresAtMillis: Long) {
@@ -488,9 +533,13 @@ class UserPreferencesDataStore @Inject constructor(
             prefs[Keys.OAUTH_REFRESH_TOKEN] = encRefresh
             prefs[Keys.OAUTH_EXPIRES_AT] = expiresAtMillis
         }
+        cachedOAuthTokens = OAuthTokenData(accessToken, refreshToken, expiresAtMillis)
+        oauthTokensCacheLoaded = true
     }
 
     override suspend fun clearOAuthTokens() {
+        cachedOAuthTokens = null
+        oauthTokensCacheLoaded = true
         store.edit { prefs ->
             prefs.remove(Keys.OAUTH_ACCESS_TOKEN)
             prefs.remove(Keys.OAUTH_REFRESH_TOKEN)
@@ -500,20 +549,42 @@ class UserPreferencesDataStore @Inject constructor(
     }
 
     override suspend fun getOAuthTokens(): OAuthTokenData? {
+        if (oauthTokensCacheLoaded) {
+            return cachedOAuthTokens
+        }
         val prefs = store.data.first()
-        val rawAccess = prefs[Keys.OAUTH_ACCESS_TOKEN] ?: return null
+        val rawAccess = prefs[Keys.OAUTH_ACCESS_TOKEN]
+        if (rawAccess.isNullOrBlank()) {
+            cachedOAuthTokens = null
+            oauthTokensCacheLoaded = true
+            return null
+        }
         val rawRefresh = prefs[Keys.OAUTH_REFRESH_TOKEN].orEmpty()
         val expires = prefs[Keys.OAUTH_EXPIRES_AT] ?: 0L
 
-        val access = CredentialCipher.decrypt(rawAccess) ?: return null
-        val refresh = if (rawRefresh.isEmpty()) "" else CredentialCipher.decrypt(rawRefresh).orEmpty()
+        val access = CredentialCipher.decrypt(rawAccess)
+        val refresh = if (rawRefresh.isEmpty()) "" else CredentialCipher.decrypt(rawRefresh)
+        if (access == null || (rawRefresh.isNotEmpty() && refresh == null)) {
+            store.edit { mutable ->
+                mutable.remove(Keys.OAUTH_ACCESS_TOKEN)
+                mutable.remove(Keys.OAUTH_REFRESH_TOKEN)
+                mutable.remove(Keys.OAUTH_EXPIRES_AT)
+                if (mutable[Keys.AUTH_MODE] == AuthMode.OAUTH_V2.name) {
+                    mutable[Keys.AUTH_MODE] = AuthMode.NONE.name
+                }
+            }
+            cachedOAuthTokens = null
+            oauthTokensCacheLoaded = true
+            return null
+        }
+        val cleanRefresh = refresh.orEmpty()
 
         // Transparently migrate legacy plaintext tokens to AndroidKeyStore AES-GCM in-place.
         val needsAccessMigration = access.isNotEmpty() && !CredentialCipher.isEncrypted(rawAccess)
-        val needsRefreshMigration = refresh.isNotEmpty() && !CredentialCipher.isEncrypted(rawRefresh)
+        val needsRefreshMigration = cleanRefresh.isNotEmpty() && !CredentialCipher.isEncrypted(rawRefresh)
         if (needsAccessMigration || needsRefreshMigration) {
             val encAccess = if (needsAccessMigration) CredentialCipher.encrypt(access) else rawAccess
-            val encRefresh = if (needsRefreshMigration) CredentialCipher.encrypt(refresh) else rawRefresh
+            val encRefresh = if (needsRefreshMigration) CredentialCipher.encrypt(cleanRefresh) else rawRefresh
             if (encAccess != rawAccess || encRefresh != rawRefresh) {
                 store.edit { mutable ->
                     if (mutable[Keys.OAUTH_ACCESS_TOKEN] == rawAccess) {
@@ -525,7 +596,10 @@ class UserPreferencesDataStore @Inject constructor(
                 }
             }
         }
-        return OAuthTokenData(access, refresh, expires)
+        return OAuthTokenData(access, cleanRefresh, expires).also {
+            cachedOAuthTokens = it
+            oauthTokensCacheLoaded = true
+        }
     }
 
     suspend fun saveIrcSession(username: String, password: String) {
@@ -554,7 +628,17 @@ class UserPreferencesDataStore @Inject constructor(
         val prefs = store.data.first()
         val user = prefs[Keys.IRC_USERNAME] ?: return null
         val rawPass = prefs[Keys.IRC_PASSWORD] ?: return null
-        val pass = CredentialCipher.decrypt(rawPass) ?: return null
+        if (rawPass.isBlank()) return null
+        val pass = CredentialCipher.decrypt(rawPass)
+        if (pass == null) {
+            store.edit { mutable ->
+                mutable.remove(Keys.IRC_PASSWORD)
+                if (mutable[Keys.AUTH_MODE] == AuthMode.IRC.name) {
+                    mutable[Keys.AUTH_MODE] = AuthMode.NONE.name
+                }
+            }
+            return null
+        }
         if (pass.isNotEmpty() && !CredentialCipher.isEncrypted(rawPass)) {
             val encPass = CredentialCipher.encrypt(pass)
             if (encPass != rawPass) {
@@ -1013,6 +1097,8 @@ class UserPreferencesDataStore @Inject constructor(
     }
 
     suspend fun clearSession() {
+        cachedOAuthTokens = null
+        oauthTokensCacheLoaded = true
         var preservedTheme = WidgetTheme.NOTHING_OS
         var preservedTranslucent = false
         store.edit { prefs ->
@@ -1148,5 +1234,78 @@ class UserPreferencesDataStore @Inject constructor(
                 prefs[Keys.SKIPPED_UPDATE_VERSION] = clean
             }
         }
+    }
+
+    suspend fun setTrackedAlertsEnabled(enabled: Boolean) {
+        store.edit { prefs ->
+            prefs[Keys.TRACKED_ALERTS_ENABLED] = enabled
+        }
+    }
+
+    suspend fun setTrackedAlertsIntervalMinutes(minutes: Int) {
+        val safeMinutes = TrackedPlayerAlertConfig.clampIntervalMinutes(minutes)
+        store.edit { prefs ->
+            prefs[Keys.TRACKED_ALERTS_INTERVAL_MINUTES] = safeMinutes
+        }
+    }
+
+    suspend fun setDefaultTrackedTopPlayLimit(limit: Int) {
+        val safeLimit = TrackedPlayerAlertConfig.clampTopPlayLimit(limit)
+        store.edit { prefs ->
+            prefs[Keys.DEFAULT_TRACKED_TOP_PLAY_LIMIT] = safeLimit
+        }
+    }
+
+    suspend fun getTrackedAlertConfigs(): Map<String, TrackedPlayerAlertConfig> {
+        val raw = store.data.first()[Keys.TRACKED_PLAYER_ALERT_CONFIGS_JSON]
+        return parseTrackedAlertConfigs(raw)
+    }
+
+    suspend fun saveTrackedPlayerAlertConfig(
+        userId: Long,
+        mode: String,
+        config: TrackedPlayerAlertConfig
+    ) {
+        if (userId <= 0L) return
+        val key = TrackedPlayerAlertConfig.configKey(userId, mode)
+        val clean = config.sanitized()
+        store.edit { prefs ->
+            val current = parseTrackedAlertConfigs(prefs[Keys.TRACKED_PLAYER_ALERT_CONFIGS_JSON]).toMutableMap()
+            current[key] = clean
+            prefs[Keys.TRACKED_PLAYER_ALERT_CONFIGS_JSON] = macroGson.toJson(current)
+        }
+    }
+
+    suspend fun updateTrackedPlayerAlertConfig(
+        userId: Long,
+        mode: String,
+        transform: (TrackedPlayerAlertConfig) -> TrackedPlayerAlertConfig
+    ) {
+        if (userId <= 0L) return
+        val key = TrackedPlayerAlertConfig.configKey(userId, mode)
+        store.edit { prefs ->
+            val current = parseTrackedAlertConfigs(prefs[Keys.TRACKED_PLAYER_ALERT_CONFIGS_JSON]).toMutableMap()
+            val existing = current[key] ?: TrackedPlayerAlertConfig()
+            current[key] = transform(existing).sanitized()
+            prefs[Keys.TRACKED_PLAYER_ALERT_CONFIGS_JSON] = macroGson.toJson(current)
+        }
+    }
+
+    private fun parseTrackedAlertConfigs(raw: String?): Map<String, TrackedPlayerAlertConfig> {
+        if (raw.isNullOrBlank()) return emptyMap()
+        return runCatching {
+            val parsed = macroGson.fromJson<Map<String, TrackedPlayerAlertConfig>>(
+                raw,
+                trackedAlertConfigMapType
+            ) ?: return@runCatching emptyMap()
+            buildMap(parsed.size) {
+                for ((key, value) in parsed) {
+                    val cleanKey = key.trim()
+                    if (cleanKey.isNotEmpty() && value != null) {
+                        put(cleanKey, value.sanitized())
+                    }
+                }
+            }
+        }.getOrDefault(emptyMap())
     }
 }

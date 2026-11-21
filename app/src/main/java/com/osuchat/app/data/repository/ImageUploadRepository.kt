@@ -10,6 +10,7 @@ import android.net.Uri
 import android.os.Build
 import android.util.Log
 import com.google.gson.JsonParser
+import com.osuchat.app.BuildConfig
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -505,7 +506,7 @@ class ImageUploadRepository internal constructor(
         const val FALLBACK_UPLOAD_URL = ZERO_X_ZERO_UPLOAD_URL
         private const val MAX_DIMENSION_PX = 1440
         private const val JPEG_QUALITY = 80
-        const val UPLOAD_USER_AGENT = "OsuChat-Android/1.0"
+        val UPLOAD_USER_AGENT: String = "OsuCompanion/${BuildConfig.VERSION_NAME}"
         private val JPEG_MEDIA_TYPE = "image/jpeg".toMediaType()
 
         private fun buildStandaloneUploadClient(): OkHttpClient = OkHttpClient.Builder()

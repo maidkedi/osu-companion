@@ -6,6 +6,7 @@ import android.content.Intent
 import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.osuchat.app.data.model.TrackedPlayerAlertConfig
 import com.osuchat.app.data.repository.BeatmapDownloadRepository
 import com.osuchat.app.domain.model.AppSettings
 import com.osuchat.app.domain.model.AudioPlaybackState
@@ -58,6 +59,7 @@ import com.osuchat.app.service.BeatmapAudioPlayer
 import com.osuchat.app.util.AppShortcutManager
 import com.osuchat.app.util.BeatmapRecommendationEngine
 import com.osuchat.app.util.BeatmapUrlParser
+import com.osuchat.app.util.MappoolPickBanResolver
 import com.osuchat.app.util.MpLobbyParser
 import com.osuchat.app.util.RankPpMath
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -331,6 +333,7 @@ data class HomeUiState(
     val pendingShareText: String? = null,
     val pendingShareScore: OsuScoreItem? = null,
     val bookmarkedMessages: List<BookmarkedMessageItem> = emptyList(),
+    val trackedAlertConfigs: Map<String, TrackedPlayerAlertConfig> = emptyMap(),
     val actionError: String? = null,
     val actionMessage: String? = null,
     val pendingOpenMatchWizard: Boolean = false
@@ -422,109 +425,6 @@ class HomeViewModel @Inject constructor(
             chatRepository.observeProfileHistory(mode, limitDays = 90)
         }
 
-    init {
-        refreshFriends()
-        viewModelScope.launch {
-            navLocal
-                .map { it.chatSearchQuery.trim() to it.chatSearchScope }
-                .distinctUntilChanged()
-                .collect { (query, scope) ->
-                    globalSearchJob?.cancel()
-                    if (scope == ChatSearchScope.ALL_MESSAGES && query.length >= 2) {
-                        navLocal.update { it.copy(isGlobalMessageSearchLoading = true) }
-                        globalSearchJob = viewModelScope.launch {
-                            delay(250L)
-                            val hits = chatRepository.searchAllMessages(query, 100)
-                            navLocal.update {
-                                it.copy(
-                                    globalMessageSearchHits = hits,
-                                    isGlobalMessageSearchLoading = false
-                                )
-                            }
-                        }
-                    } else {
-                        navLocal.update {
-                            it.copy(
-                                globalMessageSearchHits = emptyList(),
-                                isGlobalMessageSearchLoading = false
-                            )
-                        }
-                    }
-                }
-        }
-        viewModelScope.launch {
-            mpLobbyAndMessagesFlow
-                .map { it.lobby }
-                .distinctUntilChanged()
-                .collect { lobby ->
-                    if (lobby != null) {
-                        syncActiveMpAutoScoring(lobby)
-                    }
-                }
-        }
-        viewModelScope.launch {
-            chatRepository.createdMpChannelEvents.collect { newMpChannelId ->
-                mpLocal.update { it.copy(selectedMpChannelId = newMpChannelId) }
-                navLocal.update {
-                    it.copy(
-                        activeTab = CompanionTab.MULTIPLAYER,
-                        actionMessage = "Joined multiplayer lobby $newMpChannelId"
-                    )
-                }
-            }
-        }
-        viewModelScope.launch {
-            chatRepository.settings
-                .map { it.userId to it.username }
-                .distinctUntilChanged()
-                .collect { (uid, uname) ->
-                    if (uid > 0L || uname.isNotBlank()) {
-                        if (exploreLocal.value.selfProfile == null && !exploreLocal.value.isLoadingSelfProfile) {
-                            loadSelfProfile(mode = null, forceRefresh = false)
-                        }
-                    } else {
-                        selfProfileJob?.cancel()
-                        selfOsuTrackJob?.cancel()
-                        selfMoreScoresJob?.cancel()
-                        selfProfileRequestSeq++
-                        selfOsuTrackSeq++
-                        cachedSelfDefaultMode = null
-                        exploreLocal.update {
-                            it.copy(
-                                selfProfile = null,
-                                selfProfileMode = "osu",
-                                isLoadingSelfProfile = false,
-                                isLoadingSelfScores = false,
-                                isLoadingMoreSelfBestScores = false,
-                                canLoadMoreSelfBestScores = false,
-                                selfProfileError = null,
-                                selfProfileOsuTrack = emptyList(),
-                                isSelfProfileOsuTrackLoading = false,
-                                selfPinnedScores = emptyList(),
-                                selfBestScores = emptyList(),
-                                selfRecentScores = emptyList()
-                            )
-                        }
-                    }
-                }
-        }
-        viewModelScope.launch {
-            combine(
-                chatRepository.settings
-                    .map { s ->
-                        s.authMode == AuthMode.IRC ||
-                            (s.authMode == AuthMode.OAUTH_V2 && s.hasIrcPassword)
-                    }
-                    .distinctUntilChanged(),
-                chatRepository.channels
-            ) { isAuth, channels -> isAuth to channels }
-                .collectLatest { (isAuth, channels) ->
-                    delay(1_500L)
-                    appShortcutManager.syncDynamicShortcuts(isAuth, channels)
-                }
-        }
-    }
-
     val uiState: StateFlow<HomeUiState> = combine(
         chatRepository.channels,
         chatRepository.friends,
@@ -545,7 +445,8 @@ class HomeViewModel @Inject constructor(
         selfProfileHistoryFlow,
         chatRepository.mutedChannels,
         chatRepository.dotOnlyChannels,
-        chatRepository.matchSetupTemplates
+        chatRepository.matchSetupTemplates,
+        chatRepository.trackedAlertConfigs
     ) { values ->
         @Suppress("UNCHECKED_CAST")
         val allChannels = values[0] as List<ChatChannel>
@@ -579,6 +480,8 @@ class HomeViewModel @Inject constructor(
         val dotOnlySet = values[18] as Set<String>
         @Suppress("UNCHECKED_CAST")
         val matchSetupTemplates = values[19] as List<MatchSetupTemplate>
+        @Suppress("UNCHECKED_CAST")
+        val trackedAlertConfigs = values[20] as Map<String, TrackedPlayerAlertConfig>
 
         val availablePlayLaterTags = savedBeatmaps
             .flatMap { it.tags }
@@ -781,11 +684,115 @@ class HomeViewModel @Inject constructor(
             pendingShareText = nav.pendingShareText,
             pendingShareScore = nav.pendingShareScore,
             bookmarkedMessages = bookmarkedMessages,
+            trackedAlertConfigs = trackedAlertConfigs,
             actionError = nav.actionError,
             actionMessage = nav.actionMessage,
             pendingOpenMatchWizard = nav.pendingOpenMatchWizard
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), HomeUiState())
+
+    init {
+        refreshFriends()
+        viewModelScope.launch {
+            navLocal
+                .map { it.chatSearchQuery.trim() to it.chatSearchScope }
+                .distinctUntilChanged()
+                .collect { (query, scope) ->
+                    globalSearchJob?.cancel()
+                    if (scope == ChatSearchScope.ALL_MESSAGES && query.length >= 2) {
+                        navLocal.update { it.copy(isGlobalMessageSearchLoading = true) }
+                        globalSearchJob = viewModelScope.launch {
+                            delay(250L)
+                            val hits = chatRepository.searchAllMessages(query, 100)
+                            navLocal.update {
+                                it.copy(
+                                    globalMessageSearchHits = hits,
+                                    isGlobalMessageSearchLoading = false
+                                )
+                            }
+                        }
+                    } else {
+                        navLocal.update {
+                            it.copy(
+                                globalMessageSearchHits = emptyList(),
+                                isGlobalMessageSearchLoading = false
+                            )
+                        }
+                    }
+                }
+        }
+        viewModelScope.launch {
+            mpLobbyAndMessagesFlow
+                .map { it.lobby }
+                .distinctUntilChanged()
+                .collect { lobby ->
+                    if (lobby != null) {
+                        syncActiveMpAutoScoring(lobby)
+                    }
+                }
+        }
+        viewModelScope.launch {
+            chatRepository.createdMpChannelEvents.collect { newMpChannelId ->
+                mpLocal.update { it.copy(selectedMpChannelId = newMpChannelId) }
+                navLocal.update {
+                    it.copy(
+                        activeTab = CompanionTab.MULTIPLAYER,
+                        actionMessage = "Joined multiplayer lobby $newMpChannelId"
+                    )
+                }
+            }
+        }
+        viewModelScope.launch {
+            chatRepository.settings
+                .map { it.userId to it.username }
+                .distinctUntilChanged()
+                .collect { (uid, uname) ->
+                    if (uid > 0L || uname.isNotBlank()) {
+                        if (exploreLocal.value.selfProfile == null && !exploreLocal.value.isLoadingSelfProfile) {
+                            loadSelfProfile(mode = null, forceRefresh = false)
+                        }
+                    } else {
+                        selfProfileJob?.cancel()
+                        selfOsuTrackJob?.cancel()
+                        selfMoreScoresJob?.cancel()
+                        selfProfileRequestSeq++
+                        selfOsuTrackSeq++
+                        cachedSelfDefaultMode = null
+                        exploreLocal.update {
+                            it.copy(
+                                selfProfile = null,
+                                selfProfileMode = "osu",
+                                isLoadingSelfProfile = false,
+                                isLoadingSelfScores = false,
+                                isLoadingMoreSelfBestScores = false,
+                                canLoadMoreSelfBestScores = false,
+                                selfProfileError = null,
+                                selfProfileOsuTrack = emptyList(),
+                                isSelfProfileOsuTrackLoading = false,
+                                selfPinnedScores = emptyList(),
+                                selfBestScores = emptyList(),
+                                selfRecentScores = emptyList()
+                            )
+                        }
+                    }
+                }
+        }
+        viewModelScope.launch {
+            combine(
+                chatRepository.settings
+                    .map { s ->
+                        s.authMode == AuthMode.IRC ||
+                            (s.authMode == AuthMode.OAUTH_V2 && s.hasIrcPassword)
+                    }
+                    .distinctUntilChanged(),
+                chatRepository.channels
+            ) { isAuth, channels -> isAuth to channels }
+                .collectLatest { (isAuth, channels) ->
+                    delay(1_500L)
+                    appShortcutManager.syncDynamicShortcuts(isAuth, channels)
+                }
+        }
+    }
 
     fun onCompanionTabSelected(tab: CompanionTab) {
         navLocal.update { it.copy(activeTab = tab) }
@@ -1100,9 +1107,9 @@ class HomeViewModel @Inject constructor(
                     navLocal.update {
                         it.copy(
                             actionMessage = if (nowMuted) {
-                                "${channel.displayTitle}: Bildirimler kapatıldı"
+                                "${channel.displayTitle}: Notifications muted"
                             } else {
-                                "${channel.displayTitle}: Bildirimler açıldı"
+                                "${channel.displayTitle}: Notifications enabled"
                             }
                         )
                     }
@@ -1120,9 +1127,9 @@ class HomeViewModel @Inject constructor(
                     navLocal.update {
                         it.copy(
                             actionMessage = if (nowDotOnly) {
-                                "${channel.displayTitle}: Sayı yerine sadece nokta"
+                                "${channel.displayTitle}: Dot-only badge enabled"
                             } else {
-                                "${channel.displayTitle}: Okunmamış sayısı gösterilecek"
+                                "${channel.displayTitle}: Unread badge enabled"
                             }
                         )
                     }
@@ -1592,30 +1599,9 @@ class HomeViewModel @Inject constructor(
     ) {
         val channelId = uiState.value.activeMpLobby?.channelId ?: return
         chatRepository.updateMatchSeriesState(channelId) { current ->
-            val nextStates = current.slotStates.toMutableMap()
-            if (targetState == MpPoolSlotState.AVAILABLE) {
-                nextStates.remove(slot.id)
-            } else {
-                nextStates[slot.id] = targetState
-            }
-            val isPickState = targetState == MpPoolSlotState.PICKED_RED ||
-                targetState == MpPoolSlotState.PICKED_BLUE ||
-                targetState == MpPoolSlotState.PLAYED_TB ||
-                targetState == MpPoolSlotState.PLAYED
-            val pickedBy = when (targetState) {
-                MpPoolSlotState.PICKED_RED -> MpTeam.RED
-                MpPoolSlotState.PICKED_BLUE -> MpTeam.BLUE
-                else -> MpTeam.NONE
-            }
-            current.copy(
-                slotStates = nextStates,
-                activePickedSlotId = if (isPickState) slot.id else current.activePickedSlotId,
-                activePickedSlotTag = if (isPickState) slot.slotTag else current.activePickedSlotTag,
-                activePickedBeatmapId = if (isPickState) slot.beatmapId else current.activePickedBeatmapId,
-                activePickedBy = if (isPickState) pickedBy else current.activePickedBy
-            )
+            MappoolPickBanResolver.applySlotTransition(current, slot, targetState)
         }
-        if (triggerMpCommands) {
+        if (triggerMpCommands && targetState != MpPoolSlotState.AVAILABLE) {
             applyMappoolSlotToActiveLobby(slot)
         }
     }
@@ -2103,11 +2089,11 @@ class HomeViewModel @Inject constructor(
                             }
                         )
                     }
-                    navLocal.update {
+                        navLocal.update {
                         it.copy(
                             selectedProfile = updatedProfile,
                             actionMessage = if (tracked) {
-                                "Tracking $username's Top 5 PP plays"
+                                "Tracking alerts enabled for $username"
                             } else {
                                 "Stopped tracking $username"
                             }
@@ -2120,6 +2106,56 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    fun saveTrackedPlayerAlertConfig(
+        userId: Long,
+        mode: String,
+        config: TrackedPlayerAlertConfig,
+        username: String = "",
+        avatarUrl: String = ""
+    ) {
+        viewModelScope.launch {
+            chatRepository.saveTrackedPlayerAlertConfig(
+                userId = userId,
+                mode = mode,
+                config = config,
+                username = username,
+                avatarUrl = avatarUrl
+            )
+            val currentProfile = navLocal.value.selectedProfile
+            val updatedProfile = if (currentProfile != null &&
+                ((userId > 0L && currentProfile.userId == userId) ||
+                    (username.isNotBlank() && currentProfile.username.equals(username, ignoreCase = true)))
+            ) {
+                currentProfile.copy(isTrackedForPp = true)
+            } else {
+                currentProfile
+            }
+            exploreLocal.update { exp ->
+                exp.copy(
+                    players = exp.players.map { p ->
+                        if ((userId > 0L && p.userId == userId) ||
+                            (username.isNotBlank() && p.username.equals(username, ignoreCase = true))
+                        ) {
+                            p.copy(isTrackedForPp = true)
+                        } else {
+                            p
+                        }
+                    }
+                )
+            }
+            navLocal.update {
+                it.copy(
+                    selectedProfile = updatedProfile,
+                    actionMessage = if (username.isNotBlank()) {
+                        "Tracking rules saved for $username"
+                    } else {
+                        "Tracked player alert rules saved"
+                    }
+                )
+            }
+        }
+    }
+
     fun checkTrackedFriendsTopPlaysNow() {
         viewModelScope.launch {
             navLocal.update { it.copy(isPpCheckRunning = true) }
@@ -2128,9 +2164,9 @@ class HomeViewModel @Inject constructor(
                     navLocal.update {
                         it.copy(
                             actionMessage = if (count > 0) {
-                                "Sent $count new Top 5 PP alert(s)"
+                                "Sent $count tracked player alert(s)"
                             } else {
-                                "No new Top 5 plays found"
+                                "No new tracked player alerts"
                             }
                         )
                     }
@@ -2966,7 +3002,7 @@ class HomeViewModel @Inject constructor(
         val queue = items.map { item ->
             item.beatmapSet.toAudioQueueTrack(item.recommendedDiff)
         }
-        beatmapAudioPlayer.playQueue(queue, startIndex = startIndex, autoAdvance = true)
+        beatmapAudioPlayer.playQueue(queue, startIndex = startIndex, autoAdvance = false)
     }
 
     fun toggleBeatmapAudio(beatmapsetId: Long, previewUrl: String) {
@@ -2975,7 +3011,7 @@ class HomeViewModel @Inject constructor(
 
     fun playSavedBeatmapsQueue(tracks: List<SavedBeatmapItem>, startIndex: Int = 0) {
         val queue = tracks.map { it.toAudioQueueTrack() }
-        beatmapAudioPlayer.playQueue(queue, startIndex = startIndex, autoAdvance = true)
+        beatmapAudioPlayer.playQueue(queue, startIndex = startIndex, autoAdvance = false)
     }
 
     fun playSearchResultsQueue(
@@ -2987,7 +3023,7 @@ class HomeViewModel @Inject constructor(
             val diff = if (idx == startIndex) chosenDiff else set.difficulties.lastOrNull()
             set.toAudioQueueTrack(diff)
         }
-        beatmapAudioPlayer.playQueue(queue, startIndex = startIndex, autoAdvance = true)
+        beatmapAudioPlayer.playQueue(queue, startIndex = startIndex, autoAdvance = false)
     }
 
     fun toggleCurrentAudioTrack() {

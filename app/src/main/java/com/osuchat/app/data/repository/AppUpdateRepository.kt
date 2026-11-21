@@ -26,6 +26,7 @@ import okhttp3.Request
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
+import java.security.MessageDigest
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
@@ -46,7 +47,8 @@ data class GitHubAssetDto(
     @SerializedName("name") val name: String? = null,
     @SerializedName("browser_download_url") val browserDownloadUrl: String? = null,
     @SerializedName("size") val size: Long? = null,
-    @SerializedName("content_type") val contentType: String? = null
+    @SerializedName("content_type") val contentType: String? = null,
+    @SerializedName("digest") val digest: String? = null
 )
 
 data class AppUpdateInfo(
@@ -58,7 +60,8 @@ data class AppUpdateInfo(
     val apkDownloadUrl: String,
     val apkFileName: String,
     val apkSizeBytes: Long,
-    val publishedAt: String
+    val publishedAt: String,
+    val apkSha256Digest: String? = null
 )
 
 sealed interface UpdateCheckResult {
@@ -112,7 +115,7 @@ class AppUpdateRepository internal constructor(
         client = buildStandaloneClient(),
         latestReleaseUrl = DEFAULT_LATEST_RELEASE_URL,
         currentVersionName = BuildConfig.VERSION_NAME,
-        userAgent = "OsuChat-Android/${BuildConfig.VERSION_NAME}",
+        userAgent = "OsuCompanion/${BuildConfig.VERSION_NAME}",
         clockMs = { System.currentTimeMillis() },
         readLastCheckAt = { prefs.getLastUpdateCheckAt() },
         writeLastCheckAt = { prefs.setLastUpdateCheckAt(it) },
@@ -199,7 +202,8 @@ class AppUpdateRepository internal constructor(
                     apkDownloadUrl = downloadUrl,
                     apkFileName = apkAsset.name?.trim().takeUnless { it.isNullOrBlank() } ?: APK_FILE_NAME,
                     apkSizeBytes = (apkAsset.size ?: 0L).coerceAtLeast(0L),
-                    publishedAt = release.publishedAt?.trim().orEmpty()
+                    publishedAt = release.publishedAt?.trim().orEmpty(),
+                    apkSha256Digest = parseSha256Digest(apkAsset.digest)
                 )
                 UpdateCheckResult.UpdateAvailable(updateInfo)
             }
@@ -212,7 +216,7 @@ class AppUpdateRepository internal constructor(
         }
     }
 
-    fun downloadApk(downloadUrl: String): Flow<ApkDownloadProgress> = flow {
+    fun downloadApk(downloadUrl: String, expectedDigest: String? = null): Flow<ApkDownloadProgress> = flow {
         val updatesDir = File(cacheRootDir, UPDATES_DIR_NAME).apply { mkdirs() }
         val partFile = File(updatesDir, APK_PART_FILE_NAME)
         val finalFile = File(updatesDir, APK_FILE_NAME)
@@ -247,6 +251,7 @@ class AppUpdateRepository internal constructor(
                     return@flow
                 }
 
+                val sha256 = MessageDigest.getInstance("SHA-256")
                 val totalBytes = body.contentLength().coerceAtLeast(-1L)
                 var downloaded = 0L
                 var lastEmitMs = 0L
@@ -263,6 +268,7 @@ class AppUpdateRepository internal constructor(
                             if (read < 0) break
                             if (read > 0) {
                                 output.write(buffer, 0, read)
+                                sha256.update(buffer, 0, read)
                                 downloaded += read
                                 val now = System.currentTimeMillis()
                                 val percent = if (totalBytes > 0L) (downloaded * 100L) / totalBytes else -1L
@@ -286,6 +292,17 @@ class AppUpdateRepository internal constructor(
                     return@flow
                 }
 
+                val expectedSha256 = parseSha256Digest(expectedDigest)
+                if (expectedSha256 != null) {
+                    val actualSha256 = sha256.digest().joinToString("") { "%02x".format(Locale.US, it) }
+                    if (!actualSha256.equals(expectedSha256, ignoreCase = true)) {
+                        partFile.delete()
+                        finalFile.delete()
+                        emit(ApkDownloadProgress.Failed("APK integrity check failed (SHA-256 mismatch)"))
+                        return@flow
+                    }
+                }
+
                 if (finalFile.exists() && !finalFile.delete()) {
                     partFile.delete()
                     emit(ApkDownloadProgress.Failed("Could not replace previous installer"))
@@ -297,6 +314,9 @@ class AppUpdateRepository internal constructor(
                     emit(ApkDownloadProgress.Failed("Could not finalize downloaded APK"))
                     return@flow
                 }
+                // Remove any legacy pre-rebrand installer left in cache/updates/
+                runCatching { File(updatesDir, LEGACY_APK_FILE_NAME).delete() }
+                runCatching { File(updatesDir, LEGACY_APK_PART_FILE_NAME).delete() }
 
                 emit(ApkDownloadProgress.Downloading(downloaded, totalBytes.takeIf { it > 0L } ?: downloaded))
                 emit(ApkDownloadProgress.Completed(finalFile))
@@ -336,7 +356,7 @@ class AppUpdateRepository internal constructor(
             totalBytes = update.apkSizeBytes.takeIf { it > 0L } ?: -1L
         )
         downloadJob = repoScope.launch {
-            downloadApk(update.apkDownloadUrl).collect { event ->
+            downloadApk(update.apkDownloadUrl, update.apkSha256Digest).collect { event ->
                 when (event) {
                     is ApkDownloadProgress.Downloading -> {
                         val expectedTotal = event.totalBytes.takeIf { it > 0L }
@@ -412,13 +432,17 @@ class AppUpdateRepository internal constructor(
     }
 
     companion object {
+        // GitHub Releases coordinates for in-app update checks.
+        // Update these two constants if you fork or rename the GitHub repository.
         const val UPDATE_REPO_OWNER = "maidkedi"
         const val UPDATE_REPO_NAME = "osu-companion"
         const val CHECK_THROTTLE_MS = 6L * 60L * 60L * 1000L
 
         private const val UPDATES_DIR_NAME = "updates"
-        private const val APK_FILE_NAME = "osuchat_update.apk"
-        private const val APK_PART_FILE_NAME = "osuchat_update.apk.part"
+        private const val APK_FILE_NAME = "osucompanion_update.apk"
+        private const val APK_PART_FILE_NAME = "osucompanion_update.apk.part"
+        private const val LEGACY_APK_FILE_NAME = "osuchat_update.apk"
+        private const val LEGACY_APK_PART_FILE_NAME = "osuchat_update.apk.part"
         private const val DOWNLOAD_BUFFER_BYTES = 8 * 1024
         private const val PROGRESS_EMIT_INTERVAL_MS = 100L
 
@@ -504,23 +528,28 @@ class AppUpdateRepository internal constructor(
             return false
         }
 
+        internal fun parseSha256Digest(rawDigest: String?): String? {
+            val trimmed = rawDigest?.trim().orEmpty()
+            if (trimmed.isEmpty()) return null
+            val hex = if (trimmed.startsWith("sha256:", ignoreCase = true)) {
+                trimmed.substringAfter(':').trim()
+            } else {
+                return null
+            }.lowercase(Locale.US)
+            return hex.takeIf { it.length == 64 && it.all { ch -> ch in '0'..'9' || ch in 'a'..'f' } }
+        }
+
         fun selectApkAsset(assets: List<GitHubAssetDto>?): GitHubAssetDto? {
             if (assets.isNullOrEmpty()) return null
             val apkAssets = assets.filter { asset ->
                 val name = asset.name?.trim().orEmpty()
                 val url = asset.browserDownloadUrl?.trim().orEmpty()
                 name.endsWith(".apk", ignoreCase = true) &&
-                    (url.startsWith("https://", ignoreCase = true) ||
-                        url.startsWith("http://", ignoreCase = true))
+                    url.startsWith("https://", ignoreCase = true)
             }
             if (apkAssets.isEmpty()) return null
             return apkAssets.firstOrNull {
-                it.name.orEmpty().contains("release", ignoreCase = true) &&
-                    it.browserDownloadUrl.orEmpty().startsWith("https://", ignoreCase = true)
-            } ?: apkAssets.firstOrNull {
                 it.name.orEmpty().contains("release", ignoreCase = true)
-            } ?: apkAssets.firstOrNull {
-                it.browserDownloadUrl.orEmpty().startsWith("https://", ignoreCase = true)
             } ?: apkAssets.first()
         }
     }
