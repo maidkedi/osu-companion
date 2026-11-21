@@ -1,6 +1,6 @@
-# OsuCompanion OAuth2 Token Proxy (Cloudflare Worker)
+# osu! Companion OAuth2 Token Proxy (Cloudflare Worker)
 
-This directory contains the complete, auditable source code for the stateless Cloudflare Worker that handles osu! API v2 OAuth token exchange (`authorization_code`) and token refresh (`refresh_token`) for OsuCompanion.
+This directory contains the complete, auditable source code for the stateless Cloudflare Worker that handles osu! API v2 OAuth token exchange (`authorization_code`) and token refresh (`refresh_token`) for osu! Companion.
 
 ## Why This Proxy Exists
 

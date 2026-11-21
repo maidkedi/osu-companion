@@ -56,7 +56,7 @@ object ChatLogFormatter {
         val sb = StringBuilder()
         when (format) {
             ChatLogExportFormat.PLAIN_TEXT -> {
-                sb.appendLine("OsuCompanion Chat Log")
+                sb.appendLine("osu! Companion Chat Log")
                 sb.appendLine("Channel: $displayChannel")
                 sb.appendLine("Exported: $exportedAt")
                 sb.appendLine("Messages: ${messages.size}")

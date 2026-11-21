@@ -136,11 +136,11 @@ class ChatNotificationManager @Inject constructor(
 
         val userTag = username?.takeIf { it.isNotBlank() }?.let { " ($it)" }.orEmpty()
         val title = when (status) {
-            ConnectionStatus.ONLINE -> "OsuCompanion connected$userTag"
-            ConnectionStatus.CONNECTING -> "Connecting to OsuCompanion$userTag…"
-            ConnectionStatus.RECONNECTING -> "Reconnecting to OsuCompanion$userTag…"
-            ConnectionStatus.ERROR -> "OsuCompanion connection issue"
-            ConnectionStatus.OFFLINE -> "OsuCompanion disconnected"
+            ConnectionStatus.ONLINE -> "osu! Companion connected$userTag"
+            ConnectionStatus.CONNECTING -> "Connecting to osu! Companion$userTag…"
+            ConnectionStatus.RECONNECTING -> "Reconnecting to osu! Companion$userTag…"
+            ConnectionStatus.ERROR -> "osu! Companion connection issue"
+            ConnectionStatus.OFFLINE -> "osu! Companion disconnected"
         }
 
         return NotificationCompat.Builder(context, SERVICE_CHANNEL_ID)
@@ -292,7 +292,7 @@ class ChatNotificationManager @Inject constructor(
         // Group summary notification for Android notification shade grouping
         val summaryNotification = NotificationCompat.Builder(context, MESSAGE_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle("OsuCompanion")
+            .setContentTitle("osu! Companion")
             .setContentText("New messages")
             .setGroup(GROUP_KEY_MESSAGES)
             .setGroupSummary(true)

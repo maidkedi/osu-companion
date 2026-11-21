@@ -1542,7 +1542,7 @@ class ChatRepositoryImpl @Inject constructor(
             }
             trimmed.equals("/np", ignoreCase = true) -> {
                 isAction = true
-                content = "is listening to OsuCompanion Radio"
+                content = "is listening to osu! Companion Radio"
             }
             else -> {
                 isAction = false
@@ -3663,7 +3663,7 @@ class ChatRepositoryImpl @Inject constructor(
     }
 
     override suspend fun createMultiplayerLobby(roomName: String): Result<String> = withContext(Dispatchers.IO) {
-        val cleanName = MpLobbyParser.sanitizeRoomName(roomName).ifBlank { "OsuCompanion Lobby" }
+        val cleanName = MpLobbyParser.sanitizeRoomName(roomName).ifBlank { "osu! Companion Lobby" }
         val currentSettings = prefs.settingsFlow.first()
         ensureBotChannelAndIrcOnline(currentSettings)
 

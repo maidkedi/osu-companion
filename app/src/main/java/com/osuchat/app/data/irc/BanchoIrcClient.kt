@@ -672,7 +672,7 @@ class BanchoIrcClient @Inject constructor() {
                 withTimeoutOrNull(QUIT_FLUSH_TIMEOUT_MS) {
                     writeMutex.withLock {
                         runCatching {
-                            oldWriter.write("QUIT :OsuCompanion disconnected\r\n")
+                            oldWriter.write("QUIT :osu! Companion disconnected\r\n")
                             oldWriter.flush()
                         }
                     }

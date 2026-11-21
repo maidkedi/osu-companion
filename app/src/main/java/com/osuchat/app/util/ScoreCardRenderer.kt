@@ -552,7 +552,7 @@ class ScoreCardRenderer @Inject constructor(
         }
         paint.color = Color.parseColor("#FF66AA")
         canvas.drawCircle(56f, h - 42f, 5f, paint)
-        canvas.drawText("OsuCompanion", 72f, h - 36f, footerPaint)
+        canvas.drawText("osu! Companion", 72f, h - 36f, footerPaint)
 
         val linkText = score.beatmapId?.takeIf { it > 0L }?.let { "osu.ppy.sh/b/$it" }
             ?: score.beatmapsetId?.takeIf { it > 0L }?.let { "osu.ppy.sh/s/$it" }

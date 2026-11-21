@@ -1,5 +1,5 @@
 /**
- * OsuCompanion Stateless OAuth2 Token Proxy (Cloudflare Worker)
+ * osu! Companion Stateless OAuth2 Token Proxy (Cloudflare Worker)
  *
  * Purpose:
  *   osu! API v2 requires a confidential `client_secret` when calling

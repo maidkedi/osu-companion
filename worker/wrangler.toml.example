@@ -1,4 +1,4 @@
-# Example Cloudflare Workers configuration for self-hosting the OsuCompanion OAuth proxy.
+# Example Cloudflare Workers configuration for self-hosting the osu! Companion OAuth proxy.
 #
 # 1. Copy this file to `wrangler.toml`:
 #      cp wrangler.toml.example wrangler.toml

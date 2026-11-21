@@ -334,7 +334,7 @@ fun AppUpdateDialog(
                         is AppUpdateDialogState.AwaitingInstallPermission -> {
                             OsuInlineBanner(
                                 title = "Allow package installs",
-                                text = "Enable \"Allow from this source\" for OsuCompanion to install v${update.versionName}",
+                                text = "Enable \"Allow from this source\" for osu! Companion to install v${update.versionName}",
                                 tone = OsuBannerTone.WARNING,
                                 icon = Icons.Rounded.Security
                             )

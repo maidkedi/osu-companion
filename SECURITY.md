@@ -2,12 +2,12 @@
 
 ## Supported Versions
 
-Security fixes are applied to the latest release of OsuCompanion:
+Security fixes are applied to the latest release of osu! Companion:
 
 | Version | Supported |
 | --- | --- |
-| `1.0.3` (latest) | Yes |
-| `< 1.0.3` | No — please upgrade to the latest release |
+| `1.0.4` (latest) | Yes |
+| `< 1.0.4` | No — please upgrade to the latest release |
 
 ---
 

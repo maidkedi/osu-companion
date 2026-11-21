@@ -1230,7 +1230,7 @@ fun SettingsScreen(
                             verticalArrangement = Arrangement.spacedBy(OsuSpacing.xxs)
                         ) {
                             Text(
-                                text = "OsuCompanion",
+                                text = "osu! Companion",
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.SemiBold,
                                 maxLines = 1,
@@ -1626,7 +1626,7 @@ private fun BanchoWidgetPreviewCard(
     val numFmt = remember { NumberFormat.getIntegerInstance(Locale.US) }
     val timeFmt = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
 
-    val displayUsername = if (!isLoggedIn || username.isBlank()) "OsuCompanion" else username
+    val displayUsername = if (!isLoggedIn || username.isBlank()) "osu! Companion" else username
     val globalRankText = if (!isLoggedIn) {
         if (compact && theme == WidgetTheme.NOTHING_OS) "SIGN IN" else if (compact) "Sign in" else "—"
     } else {
@@ -1737,7 +1737,7 @@ private fun BanchoWidgetPreviewCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = if (theme == WidgetTheme.NOTHING_OS && displayUsername == "OsuCompanion") {
+                        text = if (theme == WidgetTheme.NOTHING_OS && displayUsername == "osu! Companion") {
                             "BANCHO"
                         } else {
                             displayUsername

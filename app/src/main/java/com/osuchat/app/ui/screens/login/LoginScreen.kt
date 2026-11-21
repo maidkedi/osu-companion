@@ -220,7 +220,7 @@ fun LoginScreen(
                     verticalArrangement = Arrangement.spacedBy(OsuSpacing.xxs)
                 ) {
                     Text(
-                        text = "OsuCompanion",
+                        text = "osu! Companion",
                         style = MaterialTheme.typography.headlineSmall,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis

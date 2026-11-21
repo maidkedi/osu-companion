@@ -47,7 +47,7 @@
                     android:pathPrefix="/callback" />
             </intent-filter>
 
-            <intent-filter android:label="Share to OsuCompanion">
+            <intent-filter android:label="Share to osu! Companion">
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />

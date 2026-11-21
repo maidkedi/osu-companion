@@ -400,7 +400,7 @@ class OAuthPkceManager @Inject constructor() {
             <head>
               <meta charset="utf-8" />
               <meta name="viewport" content="width=device-width, initial-scale=1" />
-              <title>OsuCompanion</title>
+              <title>osu! Companion</title>
               <style>
                 body { font-family: -apple-system, sans-serif; background: #18141c; color: #f6eff7; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 24px; text-align: center; }
                 .card { background: #261f2d; border-radius: 18px; padding: 28px 24px; max-width: 380px; box-shadow: 0 8px 28px rgba(0,0,0,0.45); }
@@ -413,7 +413,7 @@ class OAuthPkceManager @Inject constructor() {
               <div class="card">
                 <h2>$heading</h2>
                 <p>$sub</p>
-                <a id="return-btn" class="btn" href="$baseDeepLink">Return to OsuCompanion</a>
+                <a id="return-btn" class="btn" href="$baseDeepLink">Return to osu! Companion</a>
               </div>
               <script>
                 (function() {

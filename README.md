@@ -1,6 +1,6 @@
-# OsuCompanion
+# osu! Companion
 
-OsuCompanion is an open-source Android companion client for **osu!** (lazer & stable) combining Bancho IRC chat, multiplayer tournament referee tools, player & beatmap analytics, an on-device `rosu-pp` PP simulator, score card export, and home-screen widgets.
+osu! Companion is an open-source Android companion client for **osu!** (lazer & stable) combining Bancho IRC chat, multiplayer tournament referee tools, player & beatmap analytics, an on-device `rosu-pp` PP simulator, score card export, and home-screen widgets.
 
 Built natively in Kotlin with Jetpack Compose, Material 3, Room, Hilt, and WebAssembly `rosu-pp`.
 
@@ -27,13 +27,13 @@ Built natively in Kotlin with Jetpack Compose, Material 3, Room, Hilt, and WebAs
 
 ## Security, Privacy & Transparency
 
-OsuCompanion is designed so you can inspect every network hop and credential boundary directly in this repository.
+osu! Companion is designed so you can inspect every network hop and credential boundary directly in this repository.
 
 ### OAuth2 Data Flow
 
 ```text
 +-------------------+   1. Browser OAuth2 + PKCE    +------------------------------+
-|  OsuCompanion     | ----------------------------> |  osu.ppy.sh/oauth/authorize  |
+|  osu! Companion   | ----------------------------> |  osu.ppy.sh/oauth/authorize  |
 |  Android App      | <---------------------------- |  (user approves scopes)      |
 |  (no secret in    |   2. Loopback redirect        +------------------------------+
 |   APK)            |      127.0.0.1:42069/callback
@@ -62,7 +62,7 @@ OsuCompanion is designed so you can inspect every network hop and credential bou
 
 ### Requested OAuth2 Scopes
 
-| Scope | Why OsuCompanion Requests It |
+| Scope | Why osu! Companion Requests It |
 | --- | --- |
 | `public` | Read public player profiles, beatmaps, leaderboards, top/recent scores, and rankings. |
 | `identify` | Identify your own signed-in osu! account (`/api/v2/me`) for profile stats, widgets, and IRC setup. |
@@ -75,9 +75,9 @@ OsuCompanion is designed so you can inspect every network hop and credential bou
 1. Open the [GitHub Releases](https://github.com/maidkedi/osu-companion/releases/latest) page.
 2. Download the signed `OsuCompanion-v*.apk` asset (Android 8.0 / API 26 or newer required).
 3. Install the APK on your device (enable "Install unknown apps" for your browser or file manager if prompted).
-4. Future releases can be checked and verified directly from **Settings > App updates** inside OsuCompanion.
+4. Future releases can be checked and verified directly from **Settings > App updates** inside osu! Companion.
 
-> **Upgrading from older OsuChat builds:** Package ID (`com.osuchat.app`), local database, preferences, and keystore aliases remain unchanged so existing installs upgrade smoothly without data loss.
+> **Upgrade compatibility:** The Android package ID (`com.osuchat.app`), local database, preferences, and keystore aliases remain unchanged across releases so existing installs upgrade smoothly without data loss.
 
 ---
 
@@ -127,4 +127,4 @@ OsuCompanion is designed so you can inspect every network hop and credential bou
 ## License
 
 Licensed under the [MIT License](LICENSE).
-osu! is a trademark of ppy Pty Ltd; OsuCompanion is an independent, unofficial open-source project.
+osu! is a trademark of ppy Pty Ltd; osu! Companion is an independent, unofficial open-source project.
